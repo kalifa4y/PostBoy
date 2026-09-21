@@ -1,6 +1,11 @@
 import crypto from 'node:crypto';
 import nodemailer from 'nodemailer';
 import { getDatabase } from '../db/connection.js';
+import {
+  getDailyClippingGoal,
+  normalizeDateString,
+  DailyClippingGoal
+} from './clippingGoalService.js';
 
 export interface SmtpConfig {
   host: string;
@@ -91,8 +96,6 @@ export class EmailService {
 
   /**
    * Notifie l'utilisateur qu'une publication a été publiée avec succès.
-   * Décorrélation totale : en cas d'erreur SMTP, la fonction loggue l'erreur et retourne false
-   * sans jamais lever d'exception ni altérer la publication.
    */
   async notifyPublicationPublished(publicationId: string): Promise<boolean> {
     if (!this.isConfigured()) {
@@ -228,7 +231,6 @@ Message généré automatiquement par PostBoy.
     } catch (err: any) {
       console.warn(`[Email] Échec de l'envoi de notification (publicationId=${publicationId}): ${err.message}`);
 
-      // Enregistrement de l'échec dans la base
       try {
         await db.run(`
           INSERT INTO notifications (id, publication_id, type, recipient, subject, body, status, sent_at, error, created_at)
@@ -244,7 +246,6 @@ Message généré automatiquement par PostBoy.
 
   /**
    * Notifie l'utilisateur qu'une publication a échoué.
-   * Décorrélation totale : l'échec d'envoi SMTP ne perturbe pas le statut de la publication.
    */
   async notifyPublicationFailed(publicationId: string, rawErrorMessage: string): Promise<boolean> {
     if (!this.isConfigured()) {
@@ -363,7 +364,6 @@ Consultez PostBoy pour corriger et republier manuellement si nécessaire.
         html: htmlContent
       });
 
-      // Enregistrement succès d'envoi dans la base
       await db.run(`
         INSERT INTO notifications (id, publication_id, type, recipient, subject, body, status, sent_at, error, created_at)
         VALUES (?, ?, 'publication_failed', ?, ?, ?, 'sent', datetime('now'), NULL, datetime('now'))
@@ -383,6 +383,765 @@ Consultez PostBoy pour corriger et republier manuellement si nécessaire.
       }
 
       return false;
+    }
+  }
+
+  /**
+   * PHASE 6 : Email du matin (06:00 Africa/Bamako)
+   * Incite l'utilisateur à planifier ses 5 publications du jour réparties sur 5 campagnes.
+   */
+  async sendMorningReminder(targetDateStr?: string): Promise<{ success: boolean; alreadySent?: boolean; message: string }> {
+    if (!this.isConfigured()) {
+      return { success: false, message: 'Service email non configuré' };
+    }
+
+    const db = getDatabase();
+    const dateStr = normalizeDateString(targetDateStr);
+
+    // Idempotence : 1 seul email du matin par jour
+    const existing = await db.get<{ id: string }>(`
+      SELECT id FROM notifications 
+      WHERE type = 'morning_reminder' AND status = 'sent' AND date(sent_at) = date(?)
+    `, [dateStr]);
+
+    if (existing) {
+      return { success: true, alreadySent: true, message: "Rappel du matin déjà envoyé pour aujourd'hui." };
+    }
+
+    const goal = await getDailyClippingGoal(db, dateStr);
+
+    // Récupération des publications planifiées aujourd'hui
+    const planned = await db.all<{
+      id: string;
+      platform: string;
+      title: string;
+      scheduled_at: string;
+      caption: string | null;
+      campaign_name: string | null;
+      video_name: string | null;
+    }>(`
+      SELECT 
+        p.id,
+        p.platform,
+        p.title,
+        p.scheduled_at,
+        p.caption,
+        COALESCE(c.name, 'Sans campagne') as campaign_name,
+        COALESCE(v.original_name, v.filename, 'Vidéo non liée') as video_name
+      FROM publications p
+      LEFT JOIN campaigns c ON p.campaign_id = c.id
+      LEFT JOIN videos v ON p.video_id = v.id
+      WHERE p.scheduled_at IS NOT NULL AND date(p.scheduled_at) = date(?)
+      ORDER BY datetime(p.scheduled_at) ASC
+    `, [dateStr]);
+
+    const config = this.getSmtpConfig();
+    const clientUrl = process.env.CLIENT_URL || 'https://postboy.vercel.app';
+    const subject = `PostBoy — 06:00 : Planification de tes 5 publications du jour`;
+
+    let planSummaryText = '';
+    let planSummaryHtml = '';
+
+    if (planned.length === 0) {
+      planSummaryText = `Tu n'as encore planifié aucune publication aujourd'hui.\nAccède à PostBoy pour programmer tes 5 clips : ${clientUrl}`;
+      planSummaryHtml = `
+        <div style="background-color:#181111;border:1px solid #7f1d1d;border-radius:6px;padding:14px;margin-bottom:20px;text-align:center;">
+          <p style="margin:0;font-size:13px;color:#fca5a5;font-weight:600;">Tu n'as encore planifié aucune publication aujourd'hui.</p>
+          <p style="margin:6px 0 0 0;font-size:12px;color:#9ca3af;">Il est temps d'organiser tes clips pour respecter ta discipline quotidienne.</p>
+        </div>
+      `;
+    } else {
+      planSummaryText = planned.map(p => {
+        const time = p.scheduled_at ? p.scheduled_at.slice(11, 16) : 'Heure libre';
+        return `- [${time}] ${p.platform.toUpperCase()} | ${p.campaign_name} : ${p.title}`;
+      }).join('\n');
+
+      planSummaryHtml = `
+        <div style="margin-bottom:20px;">
+          <h4 style="font-size:12px;text-transform:uppercase;color:#9ca3af;margin:0 0 10px 0;letter-spacing:0.05em;">Publications planifiées (${planned.length}) :</h4>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            ${planned.map(p => {
+              const time = p.scheduled_at ? p.scheduled_at.slice(11, 16) : '--:--';
+              return `
+                <tr style="border-bottom:1px solid #2d333b;">
+                  <td style="padding:6px 0;color:#08eb08;font-family:monospace;width:60px;">${time}</td>
+                  <td style="padding:6px 0;color:#ffffff;font-weight:500;">${p.title}</td>
+                  <td style="padding:6px 0;color:#9ca3af;text-align:right;">${p.platform} • ${p.campaign_name}</td>
+                </tr>
+              `;
+            }).join('')}
+          </table>
+        </div>
+      `;
+    }
+
+    const textContent = `
+PostBoy — Rappel de 06:00 (Discipline de Clipping)
+
+Il est temps de planifier tes 5 publications d'aujourd'hui.
+
+---
+Objectif quotidien : 5 publications / 5 campagnes différentes
+Planifiées aujourd'hui : ${goal.scheduledToday} / 5
+Déjà publiées aujourd'hui : ${goal.publishedToday} / 5
+Publications restantes pour atteindre l'objectif : ${goal.remainingPosts}
+Série en cours (streak) : ${goal.streak} jour(s)
+---
+
+${planSummaryText}
+
+Accéder à PostBoy :
+${clientUrl}
+
+---
+PostBoy — Organisation & Discipline de Clipping
+`.trim();
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;padding:24px;background-color:#121417;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e5e7eb;">
+  <div style="max-width:560px;margin:0 auto;background-color:#1b1f24;border:1px solid #2d333b;border-radius:8px;padding:24px;">
+    <div style="border-bottom:1px solid #2d333b;padding-bottom:16px;margin-bottom:20px;">
+      <h1 style="margin:0;font-size:18px;font-weight:700;color:#08eb08;letter-spacing:-0.02em;">PostBoy — 06:00</h1>
+      <p style="margin:4px 0 0 0;font-size:12px;color:#9ca3af;">Discipline quotidienne de clipping • Objectif 5/5</p>
+    </div>
+
+    <p style="font-size:14px;color:#ffffff;line-height:1.5;margin-bottom:18px;">
+      Il est temps de planifier tes <strong>5 publications d'aujourd'hui</strong> sur <strong>5 campagnes différentes</strong>.
+    </p>
+
+    <!-- Carte des métriques du jour -->
+    <div style="background-color:#121417;border:1px solid #2d333b;border-radius:6px;padding:14px;margin-bottom:20px;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <tr>
+          <td style="padding:4px 0;color:#9ca3af;">Objectif :</td>
+          <td style="padding:4px 0;color:#ffffff;font-weight:600;">5 publications / 5 campagnes</td>
+        </tr>
+        <tr>
+          <td style="padding:4px 0;color:#9ca3af;">Planifié aujourd'hui :</td>
+          <td style="padding:4px 0;color:#ffffff;font-family:monospace;">${goal.scheduledToday} / 5</td>
+        </tr>
+        <tr>
+          <td style="padding:4px 0;color:#9ca3af;">Déjà publié aujourd'hui :</td>
+          <td style="padding:4px 0;color:#08eb08;font-family:monospace;">${goal.publishedToday} / 5</td>
+        </tr>
+        <tr>
+          <td style="padding:4px 0;color:#9ca3af;">Restant à publier :</td>
+          <td style="padding:4px 0;color:#f59e0b;font-weight:600;font-family:monospace;">${goal.remainingPosts}</td>
+        </tr>
+        <tr>
+          <td style="padding:4px 0;color:#9ca3af;">Série en cours (Streak) :</td>
+          <td style="padding:4px 0;color:#ffffff;font-family:monospace;">${goal.streak} jour(s)</td>
+        </tr>
+      </table>
+    </div>
+
+    ${planSummaryHtml}
+
+    <div style="text-align:center;margin:24px 0;">
+      <a href="${clientUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:10px 20px;background-color:#08eb08;color:#000000;text-decoration:none;font-weight:700;font-size:13px;border-radius:6px;">
+        Ouvrir PostBoy pour planifier
+      </a>
+    </div>
+
+    <div style="border-top:1px solid #2d333b;padding-top:12px;font-size:11px;color:#6b7280;text-align:center;">
+      PostBoy — Organisation & Discipline de clipping
+    </div>
+  </div>
+</body>
+</html>
+`.trim();
+
+    const notificationId = crypto.randomUUID();
+
+    try {
+      const transporter = this.getTransporter();
+      await transporter.sendMail({
+        from: config.from,
+        to: config.notificationEmail,
+        subject,
+        text: textContent,
+        html: htmlContent
+      });
+
+      await db.run(`
+        INSERT INTO notifications (id, publication_id, type, recipient, subject, body, status, sent_at, error, created_at)
+        VALUES (?, NULL, 'morning_reminder', ?, ?, ?, 'sent', datetime('now'), NULL, datetime('now'))
+      `, [notificationId, config.notificationEmail, subject, textContent]);
+
+      return { success: true, message: 'Rappel du matin envoyé avec succès.' };
+    } catch (err: any) {
+      console.warn(`[Email] Échec envoi rappel du matin: ${err.message}`);
+      try {
+        await db.run(`
+          INSERT INTO notifications (id, publication_id, type, recipient, subject, body, status, sent_at, error, created_at)
+          VALUES (?, NULL, 'morning_reminder', ?, ?, ?, 'failed', NULL, ?, datetime('now'))
+        `, [notificationId, config.notificationEmail, subject, textContent, sanitizeErrorMessage(err.message)]);
+      } catch (dbErr: any) {
+        console.error(`[Email] Erreur enregistrement: ${dbErr.message}`);
+      }
+      return { success: false, message: `Erreur d'envoi SMTP: ${err.message}` };
+    }
+  }
+
+  /**
+   * PHASE 6 : Alerte de publication en retard
+   * Détecte les publications prévues dont l'horaire est dépassé et qui ne sont pas encore publiées.
+   */
+  async checkAndSendOverdueAlerts(): Promise<{ sentCount: number }> {
+    if (!this.isConfigured()) {
+      return { sentCount: 0 };
+    }
+
+    const db = getDatabase();
+
+    const overduePubs = await db.all<{
+      id: string;
+      platform: string;
+      title: string;
+      scheduled_at: string;
+      caption: string | null;
+      campaign_name: string | null;
+      video_name: string | null;
+    }>(`
+      SELECT 
+        p.id,
+        p.platform,
+        p.title,
+        p.scheduled_at,
+        p.caption,
+        COALESCE(c.name, 'Sans campagne') as campaign_name,
+        COALESCE(v.original_name, v.filename, 'Vidéo non liée') as video_name
+      FROM publications p
+      LEFT JOIN campaigns c ON p.campaign_id = c.id
+      LEFT JOIN videos v ON p.video_id = v.id
+      WHERE p.status = 'scheduled'
+        AND p.scheduled_at IS NOT NULL
+        AND datetime(p.scheduled_at) < datetime('now')
+    `);
+
+    let sentCount = 0;
+    const config = this.getSmtpConfig();
+    const clientUrl = process.env.CLIENT_URL || 'https://postboy.vercel.app';
+    const goal = await getDailyClippingGoal(db);
+
+    for (const pub of overduePubs) {
+      // Idempotence : une seule alerte de retard par publication
+      const existing = await db.get<{ id: string }>(`
+        SELECT id FROM notifications 
+        WHERE publication_id = ? AND type = 'overdue_alert' AND status = 'sent'
+      `, [pub.id]);
+
+      if (existing) continue;
+
+      const platformDisplay = pub.platform ? (pub.platform.charAt(0).toUpperCase() + pub.platform.slice(1)) : 'Inconnue';
+      const campaignDisplay = pub.campaign_name || 'Sans campagne';
+      const titleDisplay = pub.title || 'Sans titre';
+      const scheduledDisplay = pub.scheduled_at || 'Heure non définie';
+
+      const subject = `PostBoy — Alerte : Publication en retard — ${platformDisplay} — ${campaignDisplay}`;
+
+      const textContent = `
+PostBoy — Alerte de publication en retard
+
+Tu as une publication en retard.
+
+Détails de la publication :
+- Campagne : ${campaignDisplay}
+- Plateforme : ${platformDisplay}
+- Titre : ${titleDisplay}
+- Heure prévue : ${scheduledDisplay}
+
+État de l'objectif aujourd'hui :
+- Publications encore nécessaires aujourd'hui : ${goal.remainingPosts} (sur 5 au total)
+- Campagnes restantes : ${goal.remainingCampaigns}
+
+Accède à PostBoy pour poster manuellement et marquer la publication comme publiée :
+${clientUrl}
+
+---
+PostBoy — Organisation & Suivi de clipping
+`.trim();
+
+      const htmlContent = `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;padding:24px;background-color:#121417;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e5e7eb;">
+  <div style="max-width:560px;margin:0 auto;background-color:#1b1f24;border:1px solid #7f1d1d;border-radius:8px;padding:24px;">
+    <div style="border-bottom:1px solid #2d333b;padding-bottom:16px;margin-bottom:20px;">
+      <h1 style="margin:0;font-size:18px;font-weight:700;color:#ef4444;letter-spacing:-0.02em;">PostBoy — Publication en Retard</h1>
+      <p style="margin:4px 0 0 0;font-size:12px;color:#fca5a5;">Le créneau prévu est dépassé et le clip n'est pas encore marqué comme publié.</p>
+    </div>
+
+    <div style="background-color:#181111;border:1px solid #7f1d1d;border-radius:6px;padding:14px;margin-bottom:20px;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <tr>
+          <td style="padding:4px 0;color:#9ca3af;width:120px;">Campagne :</td>
+          <td style="padding:4px 0;color:#ffffff;font-weight:600;">${campaignDisplay}</td>
+        </tr>
+        <tr>
+          <td style="padding:4px 0;color:#9ca3af;">Plateforme :</td>
+          <td style="padding:4px 0;color:#ffffff;">${platformDisplay}</td>
+        </tr>
+        <tr>
+          <td style="padding:4px 0;color:#9ca3af;">Titre du clip :</td>
+          <td style="padding:4px 0;color:#ffffff;">${titleDisplay}</td>
+        </tr>
+        <tr>
+          <td style="padding:4px 0;color:#9ca3af;">Prévu à :</td>
+          <td style="padding:4px 0;color:#ef4444;font-family:monospace;font-weight:600;">${scheduledDisplay}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="background-color:#121417;border:1px solid #2d333b;border-radius:6px;padding:12px;margin-bottom:20px;font-size:12px;color:#9ca3af;">
+      Il te reste encore <strong style="color:#f59e0b;">${goal.remainingPosts} publication(s)</strong> et <strong style="color:#f59e0b;">${goal.remainingCampaigns} campagne(s)</strong> à valider pour atteindre l'objectif du jour.
+    </div>
+
+    <div style="text-align:center;margin:24px 0;">
+      <a href="${clientUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:10px 20px;background-color:#ef4444;color:#ffffff;text-decoration:none;font-weight:700;font-size:13px;border-radius:6px;">
+        Marquer comme publié sur PostBoy
+      </a>
+    </div>
+
+    <div style="border-top:1px solid #2d333b;padding-top:12px;font-size:11px;color:#6b7280;text-align:center;">
+      PostBoy — Organisation & Discipline de clipping
+    </div>
+  </div>
+</body>
+</html>
+`.trim();
+
+      const notificationId = crypto.randomUUID();
+
+      try {
+        const transporter = this.getTransporter();
+        await transporter.sendMail({
+          from: config.from,
+          to: config.notificationEmail,
+          subject,
+          text: textContent,
+          html: htmlContent
+        });
+
+        await db.run(`
+          INSERT INTO notifications (id, publication_id, type, recipient, subject, body, status, sent_at, error, created_at)
+          VALUES (?, ?, 'overdue_alert', ?, ?, ?, 'sent', datetime('now'), NULL, datetime('now'))
+        `, [notificationId, pub.id, config.notificationEmail, subject, textContent]);
+
+        sentCount++;
+      } catch (err: any) {
+        console.warn(`[Email] Échec alerte retard (pubId=${pub.id}): ${err.message}`);
+        try {
+          await db.run(`
+            INSERT INTO notifications (id, publication_id, type, recipient, subject, body, status, sent_at, error, created_at)
+            VALUES (?, ?, 'overdue_alert', ?, ?, ?, 'failed', NULL, ?, datetime('now'))
+          `, [notificationId, pub.id, config.notificationEmail, subject, textContent, sanitizeErrorMessage(err.message)]);
+        } catch {}
+      }
+    }
+
+    return { sentCount };
+  }
+
+  /**
+   * PHASE 6 : Rappel de publication approchante (dans les windowMinutes à venir)
+   */
+  async checkAndSendUpcomingReminders(windowMinutes = 60): Promise<{ sentCount: number }> {
+    if (!this.isConfigured()) {
+      return { sentCount: 0 };
+    }
+
+    const db = getDatabase();
+
+    const upcomingPubs = await db.all<{
+      id: string;
+      platform: string;
+      title: string;
+      scheduled_at: string;
+      caption: string | null;
+      hashtags: string | null;
+      campaign_name: string | null;
+    }>(`
+      SELECT 
+        p.id,
+        p.platform,
+        p.title,
+        p.scheduled_at,
+        p.caption,
+        p.hashtags,
+        COALESCE(c.name, 'Sans campagne') as campaign_name
+      FROM publications p
+      LEFT JOIN campaigns c ON p.campaign_id = c.id
+      WHERE p.status = 'scheduled'
+        AND p.scheduled_at IS NOT NULL
+        AND datetime(p.scheduled_at) >= datetime('now')
+        AND datetime(p.scheduled_at) <= datetime('now', '+' || ? || ' minutes')
+    `, [windowMinutes]);
+
+    let sentCount = 0;
+    const config = this.getSmtpConfig();
+    const clientUrl = process.env.CLIENT_URL || 'https://postboy.vercel.app';
+    const goal = await getDailyClippingGoal(db);
+
+    for (const pub of upcomingPubs) {
+      // Idempotence : un seul rappel par publication
+      const existing = await db.get<{ id: string }>(`
+        SELECT id FROM notifications 
+        WHERE publication_id = ? AND type = 'upcoming_reminder' AND status = 'sent'
+      `, [pub.id]);
+
+      if (existing) continue;
+
+      const platformDisplay = pub.platform ? (pub.platform.charAt(0).toUpperCase() + pub.platform.slice(1)) : 'Inconnue';
+      const campaignDisplay = pub.campaign_name || 'Sans campagne';
+      const titleDisplay = pub.title || 'Sans titre';
+      const scheduledDisplay = pub.scheduled_at || '';
+      const textToCopy = [pub.caption, pub.hashtags].filter(Boolean).join('\n\n') || titleDisplay;
+
+      const subject = `PostBoy — Rappel : Publication prévue bientôt (${platformDisplay} — ${campaignDisplay})`;
+
+      const textContent = `
+PostBoy — Rappel de publication imminente
+
+Ton prochain clip est prévu à ${scheduledDisplay}.
+
+Détails :
+- Campagne : ${campaignDisplay}
+- Plateforme : ${platformDisplay}
+- Titre : ${titleDisplay}
+
+Texte prêt à copier :
+${textToCopy}
+
+Objectif du jour : ${goal.publishedToday} / 5 publiés (${goal.remainingPosts} restant(s)).
+
+Poste manuellement puis valide sur PostBoy :
+${clientUrl}
+
+---
+PostBoy — Organisation & Suivi de clipping
+`.trim();
+
+      const htmlContent = `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;padding:24px;background-color:#121417;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e5e7eb;">
+  <div style="max-width:560px;margin:0 auto;background-color:#1b1f24;border:1px solid #2d333b;border-radius:8px;padding:24px;">
+    <div style="border-bottom:1px solid #2d333b;padding-bottom:16px;margin-bottom:20px;">
+      <h1 style="margin:0;font-size:18px;font-weight:700;color:#08eb08;letter-spacing:-0.02em;">PostBoy — Rappel de Publication</h1>
+      <p style="margin:4px 0 0 0;font-size:12px;color:#9ca3af;">Ton créneau de publication approche dans les ${windowMinutes} prochaines minutes.</p>
+    </div>
+
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px;">
+      <tr>
+        <td style="padding:4px 0;color:#9ca3af;width:120px;">Campagne :</td>
+        <td style="padding:4px 0;color:#ffffff;font-weight:600;">${campaignDisplay}</td>
+      </tr>
+      <tr>
+        <td style="padding:4px 0;color:#9ca3af;">Plateforme :</td>
+        <td style="padding:4px 0;color:#ffffff;">${platformDisplay}</td>
+      </tr>
+      <tr>
+        <td style="padding:4px 0;color:#9ca3af;">Prévu pour :</td>
+        <td style="padding:4px 0;color:#08eb08;font-family:monospace;font-weight:600;">${scheduledDisplay}</td>
+      </tr>
+    </table>
+
+    <div style="background-color:#121417;border:1px solid #2d333b;border-radius:6px;padding:12px;margin-bottom:20px;">
+      <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;margin-bottom:6px;letter-spacing:0.05em;">Texte & Hashtags prêts à copier :</div>
+      <div style="font-size:12px;color:#e5e7eb;white-space:pre-wrap;font-family:monospace;">${textToCopy}</div>
+    </div>
+
+    <div style="text-align:center;margin:24px 0;">
+      <a href="${clientUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:10px 20px;background-color:#08eb08;color:#000000;text-decoration:none;font-weight:700;font-size:13px;border-radius:6px;">
+        Ouvrir PostBoy pour publier
+      </a>
+    </div>
+
+    <div style="border-top:1px solid #2d333b;padding-top:12px;font-size:11px;color:#6b7280;text-align:center;">
+      PostBoy — Organisation & Discipline de clipping
+    </div>
+  </div>
+</body>
+</html>
+`.trim();
+
+      const notificationId = crypto.randomUUID();
+
+      try {
+        const transporter = this.getTransporter();
+        await transporter.sendMail({
+          from: config.from,
+          to: config.notificationEmail,
+          subject,
+          text: textContent,
+          html: htmlContent
+        });
+
+        await db.run(`
+          INSERT INTO notifications (id, publication_id, type, recipient, subject, body, status, sent_at, error, created_at)
+          VALUES (?, ?, 'upcoming_reminder', ?, ?, ?, 'sent', datetime('now'), NULL, datetime('now'))
+        `, [notificationId, pub.id, config.notificationEmail, subject, textContent]);
+
+        sentCount++;
+      } catch (err: any) {
+        console.warn(`[Email] Échec rappel immanquable (pubId=${pub.id}): ${err.message}`);
+      }
+    }
+
+    return { sentCount };
+  }
+
+  /**
+   * PHASE 6 : Notification de victoire (Objectif du jour atteint : 5/5)
+   * Envoyé dès que la 5ème publication dans la 5ème campagne différente est validée.
+   */
+  async notifyDailyGoalAchieved(customGoal?: DailyClippingGoal): Promise<boolean> {
+    if (!this.isConfigured()) {
+      return false;
+    }
+
+    const db = getDatabase();
+    const dateStr = normalizeDateString();
+
+    // Idempotence : 1 seul email d'objectif atteint par jour
+    const existing = await db.get<{ id: string }>(`
+      SELECT id FROM notifications 
+      WHERE type = 'goal_achieved' AND status = 'sent' AND date(sent_at) = date(?)
+    `, [dateStr]);
+
+    if (existing) {
+      return true;
+    }
+
+    const goal = customGoal || (await getDailyClippingGoal(db, dateStr));
+
+    if (!goal.isGoalMet) {
+      return false;
+    }
+
+    const config = this.getSmtpConfig();
+    const clientUrl = process.env.CLIENT_URL || 'https://postboy.vercel.app';
+    const subject = `PostBoy — Félicitations ! Objectif du jour atteint (${goal.publishedToday}/5)`;
+
+    const textContent = `
+PostBoy — Félicitations !
+
+Objectif du jour atteint : ${goal.publishedToday} publications / ${goal.distinctCampaignsToday} campagnes.
+
+Tu as respecté ta discipline de clipping aujourd'hui !
+Série en cours (streak) : ${goal.streak} jour(s) consécutif(s).
+
+Consulter ton tableau de bord :
+${clientUrl}
+
+---
+PostBoy — Organisation & Discipline de clipping
+`.trim();
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;padding:24px;background-color:#121417;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e5e7eb;">
+  <div style="max-width:560px;margin:0 auto;background-color:#1b1f24;border:1px solid #08eb08;border-radius:8px;padding:24px;">
+    <div style="border-bottom:1px solid #2d333b;padding-bottom:16px;margin-bottom:20px;text-align:center;">
+      <h1 style="margin:0;font-size:22px;font-weight:700;color:#08eb08;letter-spacing:-0.02em;">Objectif du Jour Atteint !</h1>
+      <p style="margin:6px 0 0 0;font-size:13px;color:#e5e7eb;">Félicitations, ta discipline de clipping est validée pour aujourd'hui.</p>
+    </div>
+
+    <div style="background-color:#121417;border:1px solid #2d333b;border-radius:6px;padding:16px;margin-bottom:20px;text-align:center;">
+      <div style="font-size:32px;font-weight:800;color:#08eb08;font-family:monospace;">
+        ${goal.publishedToday} / 5
+      </div>
+      <div style="font-size:13px;color:#9ca3af;margin-top:4px;">
+        publications diffusées sur <strong style="color:#ffffff;">${goal.distinctCampaignsToday} campagnes</strong> différentes
+      </div>
+      <div style="margin-top:12px;font-size:12px;color:#e5e7eb;">
+        Série en cours : <strong style="color:#f59e0b;">${goal.streak} jour(s) consécutif(s)</strong>
+      </div>
+    </div>
+
+    <div style="text-align:center;margin:24px 0;">
+      <a href="${clientUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:10px 20px;background-color:#08eb08;color:#000000;text-decoration:none;font-weight:700;font-size:13px;border-radius:6px;">
+        Voir les statistiques sur PostBoy
+      </a>
+    </div>
+
+    <div style="border-top:1px solid #2d333b;padding-top:12px;font-size:11px;color:#6b7280;text-align:center;">
+      PostBoy — Organisation & Discipline de clipping
+    </div>
+  </div>
+</body>
+</html>
+`.trim();
+
+    const notificationId = crypto.randomUUID();
+
+    try {
+      const transporter = this.getTransporter();
+      await transporter.sendMail({
+        from: config.from,
+        to: config.notificationEmail,
+        subject,
+        text: textContent,
+        html: htmlContent
+      });
+
+      await db.run(`
+        INSERT INTO notifications (id, publication_id, type, recipient, subject, body, status, sent_at, error, created_at)
+        VALUES (?, NULL, 'goal_achieved', ?, ?, ?, 'sent', datetime('now'), NULL, datetime('now'))
+      `, [notificationId, config.notificationEmail, subject, textContent]);
+
+      return true;
+    } catch (err: any) {
+      console.warn(`[Email] Échec envoi goal_achieved: ${err.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * PHASE 6 : Bilan de fin de journée (22:00 Africa/Bamako)
+   */
+  async sendDailyRecap(targetDateStr?: string): Promise<{ success: boolean; alreadySent?: boolean; message: string }> {
+    if (!this.isConfigured()) {
+      return { success: false, message: 'Service email non configuré' };
+    }
+
+    const db = getDatabase();
+    const dateStr = normalizeDateString(targetDateStr);
+
+    // Idempotence : 1 seul bilan par jour
+    const existing = await db.get<{ id: string }>(`
+      SELECT id FROM notifications 
+      WHERE type = 'daily_recap' AND status = 'sent' AND date(sent_at) = date(?)
+    `, [dateStr]);
+
+    if (existing) {
+      return { success: true, alreadySent: true, message: 'Bilan quotidien déjà envoyé.' };
+    }
+
+    const goal = await getDailyClippingGoal(db, dateStr);
+    const config = this.getSmtpConfig();
+    const clientUrl = process.env.CLIENT_URL || 'https://postboy.vercel.app';
+
+    const statusTitle = goal.isGoalMet ? 'Objectif Atteint' : 'Objectif Non Atteint';
+    const subject = `PostBoy — Bilan du jour : ${statusTitle} (${goal.publishedToday}/5)`;
+
+    const textContent = `
+PostBoy — Bilan de fin de journée (${dateStr})
+
+Statut : ${statusTitle}
+- Publications réalisées : ${goal.publishedToday} / 5
+- Campagnes différentes : ${goal.distinctCampaignsToday} / 5
+${goal.isGoalMet ? '' : `- Publications manquantes : ${goal.remainingPosts}\n- Campagnes manquantes : ${goal.remainingCampaigns}\n`}
+Série en cours (streak) : ${goal.streak} jour(s)
+
+Consulter PostBoy :
+${clientUrl}
+
+---
+PostBoy — Organisation & Discipline de clipping
+`.trim();
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;padding:24px;background-color:#121417;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e5e7eb;">
+  <div style="max-width:560px;margin:0 auto;background-color:#1b1f24;border:1px solid ${goal.isGoalMet ? '#08eb08' : '#7f1d1d'};border-radius:8px;padding:24px;">
+    <div style="border-bottom:1px solid #2d333b;padding-bottom:16px;margin-bottom:20px;">
+      <h1 style="margin:0;font-size:18px;font-weight:700;color:${goal.isGoalMet ? '#08eb08' : '#ef4444'};letter-spacing:-0.02em;">
+        PostBoy — Bilan de Fin de Journée
+      </h1>
+      <p style="margin:4px 0 0 0;font-size:12px;color:#9ca3af;">Synthèse de la discipline de clipping pour le ${dateStr}</p>
+    </div>
+
+    <div style="background-color:#121417;border:1px solid #2d333b;border-radius:6px;padding:16px;margin-bottom:20px;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <tr>
+          <td style="padding:4px 0;color:#9ca3af;width:150px;">Statut :</td>
+          <td style="padding:4px 0;color:${goal.isGoalMet ? '#08eb08' : '#ef4444'};font-weight:700;">${statusTitle}</td>
+        </tr>
+        <tr>
+          <td style="padding:4px 0;color:#9ca3af;">Publications publiées :</td>
+          <td style="padding:4px 0;color:#ffffff;font-family:monospace;font-weight:600;">${goal.publishedToday} / 5</td>
+        </tr>
+        <tr>
+          <td style="padding:4px 0;color:#9ca3af;">Campagnes distinctes :</td>
+          <td style="padding:4px 0;color:#ffffff;font-family:monospace;font-weight:600;">${goal.distinctCampaignsToday} / 5</td>
+        </tr>
+        ${!goal.isGoalMet ? `
+        <tr>
+          <td style="padding:4px 0;color:#9ca3af;">Posts manquants :</td>
+          <td style="padding:4px 0;color:#f59e0b;font-family:monospace;">${goal.remainingPosts}</td>
+        </tr>
+        <tr>
+          <td style="padding:4px 0;color:#9ca3af;">Campagnes manquantes :</td>
+          <td style="padding:4px 0;color:#f59e0b;font-family:monospace;">${goal.remainingCampaigns}</td>
+        </tr>` : ''}
+        <tr>
+          <td style="padding:4px 0;color:#9ca3af;">Série en cours (Streak) :</td>
+          <td style="padding:4px 0;color:#ffffff;font-family:monospace;">${goal.streak} jour(s)</td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="text-align:center;margin:24px 0;">
+      <a href="${clientUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:10px 20px;background-color:#08eb08;color:#000000;text-decoration:none;font-weight:700;font-size:13px;border-radius:6px;">
+        Accéder à PostBoy
+      </a>
+    </div>
+
+    <div style="border-top:1px solid #2d333b;padding-top:12px;font-size:11px;color:#6b7280;text-align:center;">
+      PostBoy — Organisation & Discipline de clipping
+    </div>
+  </div>
+</body>
+</html>
+`.trim();
+
+    const notificationId = crypto.randomUUID();
+
+    try {
+      const transporter = this.getTransporter();
+      await transporter.sendMail({
+        from: config.from,
+        to: config.notificationEmail,
+        subject,
+        text: textContent,
+        html: htmlContent
+      });
+
+      await db.run(`
+        INSERT INTO notifications (id, publication_id, type, recipient, subject, body, status, sent_at, error, created_at)
+        VALUES (?, NULL, 'daily_recap', ?, ?, ?, 'sent', datetime('now'), NULL, datetime('now'))
+      `, [notificationId, config.notificationEmail, subject, textContent]);
+
+      return { success: true, message: 'Bilan quotidien envoyé avec succès.' };
+    } catch (err: any) {
+      console.warn(`[Email] Échec bilan quotidien: ${err.message}`);
+      return { success: false, message: `Erreur d'envoi: ${err.message}` };
     }
   }
 

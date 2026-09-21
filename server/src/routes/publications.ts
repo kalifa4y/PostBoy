@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import crypto from 'node:crypto';
 import { getDatabase } from '../db/connection.js';
+import { emailService } from '../services/emailService.js';
 
 export const ALLOWED_PLATFORMS = ['tiktok', 'instagram', 'youtube'] as const;
 export type AllowedPlatform = typeof ALLOWED_PLATFORMS[number];
@@ -722,6 +723,13 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
 
       const updated = await getPublicationWithDetails(id);
 
+      // Si le statut passe à 'published', vérifier si l'objectif du jour (5/5) est atteint pour envoyer l'email de victoire
+      if (body.status && body.status.toLowerCase().trim() === 'published' && emailService.isConfigured()) {
+        emailService.notifyDailyGoalAchieved().catch((err) => {
+          fastify.log.warn(`[GoalNotification] Erreur vérification objectif: ${err?.message}`);
+        });
+      }
+
       return reply.code(200).send({
         status: 'success',
         message: 'Publication mise à jour avec succès',
@@ -776,6 +784,13 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
       `, [publishedAt, postUrl, postUrl, notes, id]);
 
       const updated = await getPublicationWithDetails(id);
+
+      // Vérifier si l'objectif du jour (5/5) est atteint pour envoyer l'email de célébration
+      if (emailService.isConfigured()) {
+        emailService.notifyDailyGoalAchieved().catch((err) => {
+          fastify.log.warn(`[GoalNotification] Erreur vérification objectif: ${err?.message}`);
+        });
+      }
 
       return reply.code(200).send({
         status: 'success',
