@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS campaigns (
   name TEXT NOT NULL,
   description TEXT,
   color TEXT NOT NULL DEFAULT '#08EB08',
+  mentions TEXT,
+  hashtags TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

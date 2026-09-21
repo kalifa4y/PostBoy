@@ -2,12 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar, NavTab } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { DashboardView } from './views/DashboardView';
+import { CampaignsView } from './views/CampaignsView';
 import { FoundationView } from './views/FoundationView';
 import { SettingsView } from './views/SettingsView';
 import { PlaceholderView } from './views/PlaceholderView';
 import { HealthStatus } from './types/domain';
 import {
-  Layers,
   Film,
   Send,
   Calendar,
@@ -101,17 +101,7 @@ export const App: React.FC = () => {
           )}
 
           {activeTab === 'campaigns' && (
-            <PlaceholderView
-              phaseNumber={2}
-              title="CRUD Campagnes"
-              description="Organisation thématique de vos publications et vidéos par campagnes dédiées avec codes couleurs."
-              icon={Layers}
-              deliverables={[
-                'Création, modification et suppression de campagnes',
-                'Attribution de palette et métadonnées',
-                'Filtrage des vidéos et publications associées'
-              ]}
-            />
+            <CampaignsView activeTimezone={health?.activeTimezone || 'Africa/Bamako'} />
           )}
 
           {activeTab === 'videos' && (

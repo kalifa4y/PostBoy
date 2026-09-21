@@ -3,11 +3,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import dotenv from 'dotenv';
 
-dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
+const projectRoot = path.basename(process.cwd()) === 'server' 
+  ? path.resolve(process.cwd(), '..') 
+  : process.cwd();
+
+dotenv.config({ path: path.resolve(projectRoot, '.env') });
 dotenv.config();
 
-const dbPath = process.env.DATABASE_PATH || './data/postboy.db';
-const resolvedDbPath = path.isAbsolute(dbPath) ? dbPath : path.resolve(process.cwd(), dbPath);
+const rawDbPath = process.env.DATABASE_PATH || './data/postboy.db';
+const resolvedDbPath = path.isAbsolute(rawDbPath) 
+  ? rawDbPath 
+  : path.resolve(projectRoot, rawDbPath);
 
 // S'assurer que le dossier parent existe
 const dbDir = path.dirname(resolvedDbPath);

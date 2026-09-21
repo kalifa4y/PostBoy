@@ -5,6 +5,9 @@ export interface Campaign {
   name: string;
   description?: string | null;
   color: string;
+  mentions?: string | null;
+  hashtags?: string | null;
+  status: 'active' | 'inactive';
   created_at: string;
   updated_at: string;
 }

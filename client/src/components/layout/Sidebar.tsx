@@ -36,7 +36,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       id: 'campaigns' as NavTab,
       label: 'Campagnes',
       icon: Layers,
-      badge: 'Phase 2'
+      badge: 'Actif'
     },
     {
       id: 'videos' as NavTab,

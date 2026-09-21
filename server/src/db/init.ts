@@ -14,6 +14,19 @@ export function initializeDatabase(): void {
   // Exécution du schéma
   db.exec(schemaSql);
 
+  // Migration dynamique non-destructive pour la table campaigns
+  const campaignColumns = db.prepare("PRAGMA table_info(campaigns)").all() as Array<{ name: string }>;
+  const colNames = campaignColumns.map(c => c.name);
+  if (!colNames.includes('mentions')) {
+    db.exec("ALTER TABLE campaigns ADD COLUMN mentions TEXT;");
+  }
+  if (!colNames.includes('hashtags')) {
+    db.exec("ALTER TABLE campaigns ADD COLUMN hashtags TEXT;");
+  }
+  if (!colNames.includes('status')) {
+    db.exec("ALTER TABLE campaigns ADD COLUMN status TEXT NOT NULL DEFAULT 'active';");
+  }
+
   // Initialisation des paramètres par défaut s'ils n'existent pas encore
   const defaultSettings = [
     { key: 'timezone', value: process.env.DEFAULT_TIMEZONE || 'Africa/Bamako' },
