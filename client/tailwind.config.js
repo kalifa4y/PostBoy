@@ -23,9 +23,9 @@ export default {
         }
       },
       fontFamily: {
-        heading: ['Space Grotesk', 'sans-serif'],
-        body: ['Plus Jakarta Sans', 'sans-serif'],
-        accent: ['Syne', 'sans-serif'],
+        heading: ['"Cal Sans"', 'sans-serif'],
+        body: ['"Google Sans Flex"', 'system-ui', 'sans-serif'],
+        accent: ['"Cal Sans"', 'sans-serif'],
       }
     },
   },

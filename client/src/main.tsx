@@ -1,5 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import '@fontsource/cal-sans';
+import '@fontsource-variable/google-sans-flex';
 import { App } from './App';
 import './index.css';
 
