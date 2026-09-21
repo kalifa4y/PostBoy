@@ -769,141 +769,145 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
           {/* ========================================================================= */}
           {viewMode === 'month' && (
             <div className="rounded-xl border border-ows-border overflow-hidden bg-ows-surface-card">
-              {/* En-tête des jours */}
-              <div className="grid grid-cols-7 bg-ows-surface-1 border-b border-ows-border text-center text-xs font-semibold uppercase tracking-wider text-ows-text-muted py-2.5">
-                {dayNames.map(day => (
-                  <div key={day}>{day}</div>
-                ))}
-              </div>
+              <div className="overflow-x-auto w-full">
+                <div className="min-w-[640px]">
+                  {/* En-tête des jours */}
+                  <div className="grid grid-cols-7 bg-ows-surface-1 border-b border-ows-border text-center text-xs font-semibold uppercase tracking-wider text-ows-text-muted py-2.5">
+                    {dayNames.map(day => (
+                      <div key={day}>{day}</div>
+                    ))}
+                  </div>
 
-              {/* Grille des cellules du mois */}
-              <div className="grid grid-cols-7 divide-x divide-y divide-ows-border/60">
-                {monthDays.map((item, idx) => {
-                  const dayEvents = publicationsByDate[item.key] || [];
-                  const isToday = item.key === todayKey;
+                  {/* Grille des cellules du mois */}
+                  <div className="grid grid-cols-7 divide-x divide-y divide-ows-border/60">
+                    {monthDays.map((item, idx) => {
+                      const dayEvents = publicationsByDate[item.key] || [];
+                      const isToday = item.key === todayKey;
 
-                  return (
-                    <div
-                      key={idx}
-                      className={`min-h-[120px] sm:min-h-[140px] p-2 transition-colors flex flex-col justify-between ${
-                        item.isCurrentMonth
-                          ? 'bg-ows-surface-card hover:bg-ows-surface-1/40'
-                          : 'bg-black/40 text-ows-text-subtle'
-                      } ${isToday ? 'ring-1 ring-inset ring-ows-accent/50 bg-ows-accent/5' : ''}`}
-                    >
-                      {/* Numéro du jour & indicateur de discipline & bouton d'ajout */}
-                      <div className="flex items-center justify-between mb-1.5 gap-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span
-                            className={`text-xs font-heading font-bold rounded-md px-1.5 py-0.5 ${
-                              isToday
-                                ? 'bg-ows-accent text-black'
-                                : item.isCurrentMonth
-                                ? 'text-ows-text-main'
-                                : 'text-ows-text-subtle'
-                            }`}
-                          >
-                            {item.date.getDate()}
-                          </span>
+                      return (
+                        <div
+                          key={idx}
+                          className={`min-h-[120px] sm:min-h-[140px] p-2 transition-colors flex flex-col justify-between ${
+                            item.isCurrentMonth
+                              ? 'bg-ows-surface-card hover:bg-ows-surface-1/40'
+                              : 'bg-black/40 text-ows-text-subtle'
+                          } ${isToday ? 'ring-1 ring-inset ring-ows-accent/50 bg-ows-accent/5' : ''}`}
+                        >
+                          {/* Numéro du jour & indicateur de discipline & bouton d'ajout */}
+                          <div className="flex items-center justify-between mb-1.5 gap-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span
+                                className={`text-xs font-heading font-bold rounded-md px-1.5 py-0.5 ${
+                                  isToday
+                                    ? 'bg-ows-accent text-black'
+                                    : item.isCurrentMonth
+                                    ? 'text-ows-text-main'
+                                    : 'text-ows-text-subtle'
+                                }`}
+                              >
+                                {item.date.getDate()}
+                              </span>
 
-                          {/* Indicateur de performance de clipping quotidienne (Phase 5) */}
-                          {(() => {
-                            const perf = dayClippingStats[item.key];
-                            if (!perf || perf.publishedCount === 0) {
-                              if (item.isCurrentMonth && item.key < todayKey) {
+                              {/* Indicateur de performance de clipping quotidienne (Phase 5) */}
+                              {(() => {
+                                const perf = dayClippingStats[item.key];
+                                if (!perf || perf.publishedCount === 0) {
+                                  if (item.isCurrentMonth && item.key < todayKey) {
+                                    return (
+                                      <span
+                                        className="text-[9px] font-mono text-zinc-500 px-1 py-0.5 rounded bg-zinc-900 border border-zinc-800"
+                                        title="0 publication réalisée • Objectif non atteint"
+                                      >
+                                        0/5
+                                      </span>
+                                    );
+                                  }
+                                  return null;
+                                }
+                                if (perf.isGoalMet) {
+                                  return (
+                                    <span
+                                      className="inline-flex items-center gap-0.5 text-[9px] font-mono font-semibold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-1 py-0.5 rounded"
+                                      title={`${perf.publishedCount}/5 posts • ${perf.campaignsCount}/5 campagnes (Objectif atteint)`}
+                                    >
+                                      <Check className="w-2.5 h-2.5 stroke-[3]" />
+                                      <span>5/5</span>
+                                    </span>
+                                  );
+                                }
                                 return (
                                   <span
-                                    className="text-[9px] font-mono text-zinc-500 px-1 py-0.5 rounded bg-zinc-900 border border-zinc-800"
-                                    title="0 publication réalisée • Objectif non atteint"
+                                    className="inline-flex items-center text-[9px] font-mono text-zinc-400 bg-zinc-900 border border-zinc-800 px-1 py-0.5 rounded"
+                                    title={`${perf.publishedCount}/5 posts • ${perf.campaignsCount}/5 campagnes (Objectif non atteint)`}
                                   >
-                                    0/5
+                                    {perf.publishedCount}/5
                                   </span>
                                 );
-                              }
-                              return null;
-                            }
-                            if (perf.isGoalMet) {
-                              return (
-                                <span
-                                  className="inline-flex items-center gap-0.5 text-[9px] font-mono font-semibold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-1 py-0.5 rounded"
-                                  title={`${perf.publishedCount}/5 posts • ${perf.campaignsCount}/5 campagnes (Objectif atteint)`}
-                                >
-                                  <Check className="w-2.5 h-2.5 stroke-[3]" />
-                                  <span>5/5</span>
-                                </span>
-                              );
-                            }
-                            return (
-                              <span
-                                className="inline-flex items-center text-[9px] font-mono text-zinc-400 bg-zinc-900 border border-zinc-800 px-1 py-0.5 rounded"
-                                title={`${perf.publishedCount}/5 posts • ${perf.campaignsCount}/5 campagnes (Objectif non atteint)`}
-                              >
-                                {perf.publishedCount}/5
-                              </span>
-                            );
-                          })()}
-                        </div>
-
-                        <button
-                          onClick={() => handleOpenQuickSchedule(item.key)}
-                          className="opacity-0 hover:opacity-100 focus:opacity-100 p-1 text-ows-text-subtle hover:text-ows-accent transition-opacity"
-                          title={`Planifier un clip pour le ${item.key}`}
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
-                      {/* Liste des événements de la journée */}
-                      <div className="space-y-1.5 flex-1 overflow-hidden">
-                        {dayEvents.slice(0, 3).map(event => {
-                          const overdue = isPublicationOverdue(event);
-                          const isPublished = event.status === 'published';
-
-                          return (
-                            <div
-                              key={event.id}
-                              onClick={() => handleOpenEdit(event)}
-                              className={`group flex items-center gap-1.5 p-1.5 rounded-md border text-[11px] cursor-pointer transition-all hover:translate-x-0.5 ${
-                                isPublished
-                                  ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-400/90 line-through'
-                                  : overdue
-                                  ? 'bg-amber-500/10 border-amber-500/50 text-amber-300 ring-1 ring-amber-500/30 font-semibold'
-                                  : 'bg-black/80 border-ows-border hover:border-ows-accent text-ows-text-main'
-                              }`}
-                            >
-                              {renderStatusDot(event)}
-                              {renderPlatformIcon(event.platform)}
-                              <span className="font-mono text-ows-text-subtle text-[10px]">
-                                {formatEventTime(event.scheduled_at)}
-                              </span>
-                              <span className="truncate flex-1" title={event.caption || event.title}>
-                                {event.caption || event.title}
-                              </span>
-                              {event.campaign_color && (
-                                <span
-                                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                                  style={{ backgroundColor: event.campaign_color }}
-                                />
-                              )}
+                              })()}
                             </div>
-                          );
-                        })}
 
-                        {dayEvents.length > 3 && (
-                          <button
-                            onClick={() => {
-                              setCurrentDate(item.date);
-                              setViewMode('day');
-                            }}
-                            className="w-full text-center text-[10px] font-semibold text-ows-accent hover:underline pt-0.5"
-                          >
-                            +{dayEvents.length - 3} autres clips
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                            <button
+                              onClick={() => handleOpenQuickSchedule(item.key)}
+                              className="opacity-0 hover:opacity-100 focus:opacity-100 p-1 text-ows-text-subtle hover:text-ows-accent transition-opacity"
+                              title={`Planifier un clip pour le ${item.key}`}
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Liste des événements de la journée */}
+                          <div className="space-y-1.5 flex-1 overflow-hidden">
+                            {dayEvents.slice(0, 3).map(event => {
+                              const overdue = isPublicationOverdue(event);
+                              const isPublished = event.status === 'published';
+
+                              return (
+                                <div
+                                  key={event.id}
+                                  onClick={() => handleOpenEdit(event)}
+                                  className={`group flex items-center gap-1.5 p-1.5 rounded-md border text-[11px] cursor-pointer transition-all hover:translate-x-0.5 ${
+                                    isPublished
+                                      ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-400/90 line-through'
+                                      : overdue
+                                      ? 'bg-amber-500/10 border-amber-500/50 text-amber-300 ring-1 ring-amber-500/30 font-semibold'
+                                      : 'bg-black/80 border-ows-border hover:border-ows-accent text-ows-text-main'
+                                  }`}
+                                >
+                                  {renderStatusDot(event)}
+                                  {renderPlatformIcon(event.platform)}
+                                  <span className="font-mono text-ows-text-subtle text-[10px]">
+                                    {formatEventTime(event.scheduled_at)}
+                                  </span>
+                                  <span className="truncate flex-1" title={event.caption || event.title}>
+                                    {event.caption || event.title}
+                                  </span>
+                                  {event.campaign_color && (
+                                    <span
+                                      className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                      style={{ backgroundColor: event.campaign_color }}
+                                    />
+                                  )}
+                                </div>
+                              );
+                            })}
+
+                            {dayEvents.length > 3 && (
+                              <button
+                                onClick={() => {
+                                  setCurrentDate(item.date);
+                                  setViewMode('day');
+                                }}
+                                className="w-full text-center text-[10px] font-semibold text-ows-accent hover:underline pt-0.5"
+                              >
+                                +{dayEvents.length - 3} autres clips
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -913,13 +917,15 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
           {/* ========================================================================= */}
           {viewMode === 'week' && (
             <div className="rounded-xl border border-ows-border overflow-hidden bg-ows-surface-card">
-              <div className="grid grid-cols-7 bg-ows-surface-1 border-b border-ows-border divide-x divide-ows-border text-center">
-                {weekDays.map(item => {
-                  const isToday = item.key === todayKey;
-                  const perf = dayClippingStats[item.key];
+              <div className="overflow-x-auto w-full">
+                <div className="min-w-[640px]">
+                  <div className="grid grid-cols-7 bg-ows-surface-1 border-b border-ows-border divide-x divide-ows-border text-center">
+                    {weekDays.map(item => {
+                      const isToday = item.key === todayKey;
+                      const perf = dayClippingStats[item.key];
 
-                  return (
-                    <div key={item.key} className={`py-3 px-2 flex flex-col items-center justify-between ${isToday ? 'bg-ows-accent/10' : ''}`}>
+                      return (
+                        <div key={item.key} className={`py-3 px-2 flex flex-col items-center justify-between ${isToday ? 'bg-ows-accent/10' : ''}`}>
                       <p className="text-xs uppercase font-semibold text-ows-text-muted">
                         {new Intl.DateTimeFormat('fr-FR', { weekday: 'short', timeZone: activeTimezone }).format(item.date)}
                       </p>
@@ -1017,6 +1023,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
                   );
                 })}
               </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1024,8 +1032,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
           {/* VUE JOUR (DAY VIEW) */}
           {/* ========================================================================= */}
           {viewMode === 'day' && (
-            <div className="rounded-xl border border-ows-border bg-ows-surface-card p-6 space-y-4">
-              <div className="flex items-center justify-between border-b border-ows-border pb-4">
+            <div className="rounded-xl border border-ows-border bg-ows-surface-card p-4 sm:p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-ows-border pb-4">
                 <div>
                   <h3 className="text-xl font-heading font-bold text-ows-text-main">
                     {new Intl.DateTimeFormat('fr-FR', {

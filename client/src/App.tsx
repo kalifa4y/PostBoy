@@ -13,6 +13,7 @@ export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [loadingHealth, setLoadingHealth] = useState<boolean>(true);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
 
   // Détection du paramètre d'onglet dans l'URL
   useEffect(() => {
@@ -72,22 +73,28 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-ows-bg overflow-hidden">
-      {/* Barre latérale */}
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+    <div className="flex h-screen bg-ows-bg overflow-hidden w-full max-w-full">
+      {/* Barre latérale desktop & Drawer mobile */}
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        isOpen={isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
+      />
 
       {/* Zone Principale */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* En-tête */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden w-full max-w-full">
+        {/* En-tête avec bouton hamburger */}
         <Header
           health={health}
           loading={loadingHealth}
           onRefreshHealth={fetchHealth}
           activeTitle={getTabTitle(activeTab)}
+          onToggleMenu={() => setIsMobileMenuOpen((prev) => !prev)}
         />
 
-        {/* Contenu principal défilable */}
-        <main className="flex-1 overflow-y-auto p-8">
+        {/* Contenu principal défilable avec padding réactif */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 w-full max-w-full overflow-x-hidden">
           {activeTab === 'settings' && (
             <SettingsView onSettingsUpdated={fetchHealth} />
           )}

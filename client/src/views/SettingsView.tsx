@@ -145,7 +145,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSettingsUpdated })
 
   return (
     <div className="max-w-4xl space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold font-heading text-ows-textMain tracking-tight">
             Configuration Système
@@ -305,7 +305,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSettingsUpdated })
           <button
             type="submit"
             disabled={saving || loading}
-            className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-lg bg-ows-accent text-black font-semibold text-xs hover:bg-ows-accentHover transition-colors disabled:opacity-50 shadow-sm"
+            className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 px-5 py-2.5 rounded-lg bg-ows-accent text-black font-semibold text-xs hover:bg-ows-accentHover transition-colors disabled:opacity-50 shadow-sm"
           >
             <Save className="w-4 h-4" />
             <span>{saving ? 'Enregistrement...' : 'Enregistrer la configuration'}</span>

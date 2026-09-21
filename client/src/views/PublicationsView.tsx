@@ -632,10 +632,10 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <button
             onClick={() => handleOpenCreateModal('multi')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-ows-surface-card border border-ows-border hover:border-ows-accent text-ows-text-main text-sm font-medium transition-colors"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-ows-surface-card border border-ows-border hover:border-ows-accent text-ows-text-main text-sm font-medium transition-colors"
           >
             <Layers className="w-4 h-4 text-ows-accent" />
             Déclinaison Multi-Plateformes
@@ -795,7 +795,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
       ) : (
         <div className="rounded-xl border border-ows-border overflow-hidden bg-ows-surface-card">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="w-full text-left text-sm min-w-[760px]">
               <thead className="bg-ows-surface-1 text-ows-text-muted text-xs uppercase tracking-wider border-b border-ows-border">
                 <tr>
                   <th className="py-3.5 px-4 font-semibold">Vidéo Source</th>

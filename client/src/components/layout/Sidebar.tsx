@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   LayoutDashboard,
   Layers,
@@ -6,7 +6,8 @@ import {
   Send,
   Calendar,
   Settings,
-  HardDrive
+  HardDrive,
+  X
 } from 'lucide-react';
 
 export type NavTab = 'dashboard' | 'campaigns' | 'videos' | 'publications' | 'calendar' | 'settings';
@@ -14,9 +15,16 @@ export type NavTab = 'dashboard' | 'campaigns' | 'videos' | 'publications' | 'ca
 interface SidebarProps {
   activeTab: NavTab;
   setActiveTab: (tab: NavTab) => void;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
+export const Sidebar: React.FC<SidebarProps> = ({
+  activeTab,
+  setActiveTab,
+  isOpen = false,
+  onClose
+}) => {
   const navItems = [
     {
       id: 'dashboard' as NavTab,
@@ -55,8 +63,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
     }
   ];
 
-  return (
-    <aside className="w-64 bg-ows-surface1 border-r border-ows-border flex flex-col h-screen select-none">
+  // Gestion de la touche Échap pour fermer le drawer mobile
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen && onClose) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  // Contenu de la navigation (réutilisé entre Desktop et Mobile Drawer)
+  const renderNavContent = (isMobile = false) => (
+    <>
       {/* Brand Header */}
       <div className="p-5 border-b border-ows-border flex items-center justify-between">
         <div className="flex items-center space-x-3">
@@ -73,6 +93,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
             </div>
           </div>
         </div>
+
+        {/* Bouton de fermeture uniquement dans le drawer mobile */}
+        {isMobile && onClose && (
+          <button
+            onClick={onClose}
+            aria-label="Fermer le menu"
+            className="w-10 h-10 flex items-center justify-center rounded-lg text-ows-textMuted hover:text-ows-textMain hover:bg-ows-surface2 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       {/* Navigation Links */}
@@ -86,8 +117,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-md text-xs font-medium transition-all duration-150 ${
+              onClick={() => {
+                setActiveTab(item.id);
+                if (isMobile && onClose) {
+                  onClose();
+                }
+              }}
+              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-md text-xs font-medium transition-all duration-150 min-h-[44px] ${
                 isActive
                   ? 'bg-ows-surfaceCard text-ows-textMain border border-ows-border shadow-sm'
                   : 'text-ows-textMuted hover:text-ows-textMain hover:bg-ows-surface2'
@@ -99,7 +135,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
                     isActive ? 'text-ows-accent' : 'text-ows-textSubtle'
                   }`}
                 />
-                <span>{item.label}</span>
+                <span className="text-sm font-medium">{item.label}</span>
               </div>
               {item.badge && (
                 <span
@@ -122,6 +158,32 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
         <span>Oshun Web Studio</span>
         <span className="font-mono text-[10px] text-ows-textMuted">v0.1.0</span>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* 1. VRAIE SIDEBAR DESKTOP (Fixe, verticale à gauche sur écran >= md) */}
+      <aside className="hidden md:flex w-64 bg-ows-surface1 border-r border-ows-border flex-col h-screen select-none shrink-0">
+        {renderNavContent(false)}
+      </aside>
+
+      {/* 2. DRAWER MOBILE LATÉRAL (Sur écran < md) */}
+      {isOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex">
+          {/* Backdrop semi-transparent avec flou */}
+          <div
+            className="fixed inset-0 bg-black/75 backdrop-blur-sm transition-opacity"
+            onClick={onClose}
+            aria-hidden="true"
+          />
+
+          {/* Panneau latéral coulissant */}
+          <aside className="relative w-72 max-w-[85vw] bg-ows-surface1 border-r border-ows-border flex flex-col h-full shadow-2xl select-none z-10 animate-in slide-in-from-left duration-200">
+            {renderNavContent(true)}
+          </aside>
+        </div>
+      )}
+    </>
   );
 };

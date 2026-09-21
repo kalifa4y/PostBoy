@@ -342,13 +342,15 @@ export const VideosView: React.FC<VideosViewProps> = ({ activeTimezone }) => {
         </div>
       ) : (
         <div className="bg-ows-surface1 border border-ows-border rounded-xl overflow-hidden shadow-sm">
-          {/* Table Header */}
-          <div className="grid grid-cols-12 gap-3 px-5 py-3 border-b border-ows-border text-[11px] font-semibold text-ows-textSubtle uppercase tracking-wider bg-ows-surface2/50">
-            <div className="col-span-5 sm:col-span-5">Clip Vidéo</div>
-            <div className="col-span-3 sm:col-span-3">Campagne</div>
-            <div className="col-span-2 sm:col-span-2">Taille</div>
-            <div className="col-span-2 sm:col-span-2 text-right">Actions</div>
-          </div>
+          <div className="overflow-x-auto">
+            <div className="min-w-[560px]">
+              {/* Table Header */}
+              <div className="grid grid-cols-12 gap-3 px-5 py-3 border-b border-ows-border text-[11px] font-semibold text-ows-textSubtle uppercase tracking-wider bg-ows-surface2/50">
+                <div className="col-span-5 sm:col-span-5">Clip Vidéo</div>
+                <div className="col-span-3 sm:col-span-3">Campagne</div>
+                <div className="col-span-2 sm:col-span-2">Taille</div>
+                <div className="col-span-2 sm:col-span-2 text-right">Actions</div>
+              </div>
 
           {/* Table Rows */}
           <div className="divide-y divide-ows-borderSubtle">
@@ -433,7 +435,9 @@ export const VideosView: React.FC<VideosViewProps> = ({ activeTimezone }) => {
             ))}
           </div>
         </div>
-      )}
+      </div>
+    </div>
+  )}
 
       {/* 4. Modal Import Multiple (Bulk Upload) */}
       {isUploadModalOpen && (

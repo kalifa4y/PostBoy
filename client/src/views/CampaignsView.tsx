@@ -294,7 +294,7 @@ export const CampaignsView: React.FC<CampaignsViewProps> = ({ activeTimezone }) 
         </div>
 
         {/* Boutons de filtre de statut */}
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setStatusFilter('all')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
