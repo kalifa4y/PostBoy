@@ -69,10 +69,14 @@ export interface Publication {
   title: string;
   caption?: string | null;
   description?: string | null;
+  hashtags?: string | null;
   tags?: string | null;
+  notes?: string | null;
   status: PublicationStatus;
   scheduled_at?: string | null;
   published_at?: string | null;
+  is_overdue?: boolean;
+  copy_text?: string;
   external_post_id?: string | null;
   post_url?: string | null;
   external_url?: string | null;

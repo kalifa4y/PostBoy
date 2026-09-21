@@ -36,10 +36,10 @@ describe('PHASE 0 - Architecture & Fondations', () => {
       expect(tableNames).toContain('settings');
       expect(tableNames).toContain('campaigns');
       expect(tableNames).toContain('videos');
-      expect(tableNames).toContain('social_accounts');
       expect(tableNames).toContain('publications');
-      expect(tableNames).toContain('publication_logs');
       expect(tableNames).toContain('notifications');
+      expect(tableNames).not.toContain('social_accounts');
+      expect(tableNames).not.toContain('publication_logs');
     });
 
     it('doit avoir initialisé les paramètres par défaut dans settings', async () => {
@@ -63,7 +63,7 @@ describe('PHASE 0 - Architecture & Fondations', () => {
       expect(body.database).toBe('connected');
       expect(body.activeTimezone).toBe('Africa/Bamako');
       expect(body.tables).toBeInstanceOf(Array);
-      expect(body.tablesCount).toBeGreaterThanOrEqual(7);
+      expect(body.tablesCount).toBeGreaterThanOrEqual(5);
     });
 
     it('GET /api/settings doit renvoyer les paramètres sans exposer les mots de passe', async () => {

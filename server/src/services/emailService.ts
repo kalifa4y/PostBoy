@@ -105,12 +105,9 @@ export class EmailService {
     const pub = await db.get<any>(`
       SELECT 
         p.*,
-        c.name as campaign_name,
-        sa.username as sa_username,
-        sa.display_name as sa_display_name
+        c.name as campaign_name
       FROM publications p
       LEFT JOIN campaigns c ON p.campaign_id = c.id
-      LEFT JOIN social_accounts sa ON p.social_account_id = sa.id
       WHERE p.id = ?
     `, [publicationId]);
 
@@ -131,7 +128,6 @@ export class EmailService {
     const config = this.getSmtpConfig();
     const platformDisplay = pub.platform.charAt(0).toUpperCase() + pub.platform.slice(1);
     const campaignDisplay = pub.campaign_name || 'Aucune campagne';
-    const accountDisplay = pub.sa_username ? `@${pub.sa_username}` : (pub.sa_display_name || 'Non renseigné');
     const postUrlDisplay = pub.external_url || pub.post_url || 'Non disponible pour le moment';
     const titleDisplay = pub.title || 'Sans titre';
     const publishedAtDisplay = pub.published_at || new Date().toISOString();
@@ -144,7 +140,6 @@ PostBoy — Notification de publication
 Statut : Publication réussie
 Campagne : ${campaignDisplay}
 Plateforme : ${platformDisplay}
-Compte : ${accountDisplay}
 Titre : ${titleDisplay}
 Date de publication : ${publishedAtDisplay}
 
@@ -183,10 +178,6 @@ Message généré automatiquement par PostBoy.
         <td style="padding:6px 0;color:#ffffff;font-weight:500;">${platformDisplay}</td>
       </tr>
       <tr>
-        <td style="padding:6px 0;color:#9ca3af;">Compte social :</td>
-        <td style="padding:6px 0;color:#ffffff;">${accountDisplay}</td>
-      </tr>
-      <tr>
         <td style="padding:6px 0;color:#9ca3af;">Titre de la vidéo :</td>
         <td style="padding:6px 0;color:#ffffff;">${titleDisplay}</td>
       </tr>
@@ -208,7 +199,7 @@ Message généré automatiquement par PostBoy.
     </div>
 
     <div style="border-top:1px solid #2d333b;padding-top:12px;font-size:11px;color:#6b7280;text-align:center;">
-      PostBoy — Automatisation locale de clipping
+      PostBoy — Organisation & Suivi de clipping
     </div>
   </div>
 </body>
@@ -227,16 +218,11 @@ Message généré automatiquement par PostBoy.
         html: htmlContent
       });
 
-      // Enregistrement succès dans la base
+      // Enregistrement succès dans la base (table notifications)
       await db.run(`
         INSERT INTO notifications (id, publication_id, type, recipient, subject, body, status, sent_at, error, created_at)
         VALUES (?, ?, 'publication_published', ?, ?, ?, 'sent', datetime('now'), NULL, datetime('now'))
       `, [notificationId, publicationId, config.notificationEmail, subject, textContent]);
-
-      await db.run(`
-        INSERT INTO publication_logs (id, publication_id, event, message, details, created_at)
-        VALUES (?, ?, 'email_notification_sent', ?, ?, datetime('now'))
-      `, [crypto.randomUUID(), publicationId, `Notification email de succès envoyée à ${config.notificationEmail}`, JSON.stringify({ notificationId, recipient: config.notificationEmail })]);
 
       return true;
     } catch (err: any) {
@@ -270,12 +256,9 @@ Message généré automatiquement par PostBoy.
     const pub = await db.get<any>(`
       SELECT 
         p.*,
-        c.name as campaign_name,
-        sa.username as sa_username,
-        sa.display_name as sa_display_name
+        c.name as campaign_name
       FROM publications p
       LEFT JOIN campaigns c ON p.campaign_id = c.id
-      LEFT JOIN social_accounts sa ON p.social_account_id = sa.id
       WHERE p.id = ?
     `, [publicationId]);
 
@@ -296,7 +279,6 @@ Message généré automatiquement par PostBoy.
     const config = this.getSmtpConfig();
     const platformDisplay = pub.platform ? (pub.platform.charAt(0).toUpperCase() + pub.platform.slice(1)) : 'Inconnue';
     const campaignDisplay = pub.campaign_name || 'Aucune campagne';
-    const accountDisplay = pub.sa_username ? `@${pub.sa_username}` : (pub.sa_display_name || 'Non renseigné');
     const titleDisplay = pub.title || 'Sans titre';
     const cleanError = sanitizeErrorMessage(rawErrorMessage);
     const dateDisplay = new Date().toISOString();
@@ -309,7 +291,6 @@ PostBoy — Alerte de publication échouée
 Statut : Échec de publication
 Campagne : ${campaignDisplay}
 Plateforme : ${platformDisplay}
-Compte : ${accountDisplay}
 Titre : ${titleDisplay}
 Date : ${dateDisplay}
 
@@ -348,10 +329,6 @@ Consultez PostBoy pour corriger et republier manuellement si nécessaire.
         <td style="padding:6px 0;color:#ffffff;font-weight:500;">${platformDisplay}</td>
       </tr>
       <tr>
-        <td style="padding:6px 0;color:#9ca3af;">Compte social :</td>
-        <td style="padding:6px 0;color:#ffffff;">${accountDisplay}</td>
-      </tr>
-      <tr>
         <td style="padding:6px 0;color:#9ca3af;">Titre de la vidéo :</td>
         <td style="padding:6px 0;color:#ffffff;">${titleDisplay}</td>
       </tr>
@@ -367,7 +344,7 @@ Consultez PostBoy pour corriger et republier manuellement si nécessaire.
     </div>
 
     <div style="border-top:1px solid #2d333b;padding-top:12px;font-size:11px;color:#6b7280;text-align:center;">
-      PostBoy — Automatisation locale de clipping
+      PostBoy — Organisation & Suivi de clipping
     </div>
   </div>
 </body>
@@ -391,11 +368,6 @@ Consultez PostBoy pour corriger et republier manuellement si nécessaire.
         INSERT INTO notifications (id, publication_id, type, recipient, subject, body, status, sent_at, error, created_at)
         VALUES (?, ?, 'publication_failed', ?, ?, ?, 'sent', datetime('now'), NULL, datetime('now'))
       `, [notificationId, publicationId, config.notificationEmail, subject, textContent]);
-
-      await db.run(`
-        INSERT INTO publication_logs (id, publication_id, event, message, details, created_at)
-        VALUES (?, ?, 'email_notification_sent', ?, ?, datetime('now'))
-      `, [crypto.randomUUID(), publicationId, `Notification email d'échec envoyée à ${config.notificationEmail}`, JSON.stringify({ notificationId, recipient: config.notificationEmail })]);
 
       return true;
     } catch (err: any) {

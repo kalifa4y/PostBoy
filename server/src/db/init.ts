@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { getDatabase } from './connection.js';
 
@@ -12,10 +11,10 @@ export async function initializeDatabase(): Promise<void> {
   const schemaPath = path.resolve(__dirname, 'schema.sql');
   const schemaSql = fs.readFileSync(schemaPath, 'utf-8');
 
-  // Exécution du schéma
+  // Exécution du schéma (CREATE TABLE IF NOT EXISTS)
   await db.exec(schemaSql);
 
-  // Migration dynamique non-destructive pour la table campaigns
+  // 1. Migration dynamique non-destructive pour la table campaigns
   const campaignColumns = await db.all<{ name: string }>("PRAGMA table_info(campaigns)");
   const colNames = campaignColumns.map(c => c.name);
   if (!colNames.includes('mentions')) {
@@ -28,7 +27,7 @@ export async function initializeDatabase(): Promise<void> {
     await db.exec("ALTER TABLE campaigns ADD COLUMN status TEXT NOT NULL DEFAULT 'active';");
   }
 
-  // Migration dynamique non-destructive pour la table videos
+  // 2. Migration dynamique non-destructive pour la table videos
   const videoColumns = await db.all<{ name: string }>("PRAGMA table_info(videos)");
   const videoColNames = videoColumns.map(c => c.name);
   if (!videoColNames.includes('thumbnail_path')) {
@@ -38,62 +37,40 @@ export async function initializeDatabase(): Promise<void> {
     await db.exec("ALTER TABLE videos ADD COLUMN status TEXT NOT NULL DEFAULT 'ready';");
   }
 
-  // Migration dynamique non-destructive pour la table publications
+  // 3. Migration dynamique non-destructive pour la table publications (Phase 3 : Workflow Manuel)
   const publicationColumns = await db.all<{ name: string }>("PRAGMA table_info(publications)");
   const pubColNames = publicationColumns.map(c => c.name);
   if (!pubColNames.includes('caption')) {
     await db.exec("ALTER TABLE publications ADD COLUMN caption TEXT;");
   }
+  if (!pubColNames.includes('hashtags')) {
+    await db.exec("ALTER TABLE publications ADD COLUMN hashtags TEXT;");
+  }
+  if (!pubColNames.includes('notes')) {
+    await db.exec("ALTER TABLE publications ADD COLUMN notes TEXT;");
+  }
+  if (!pubColNames.includes('post_url')) {
+    await db.exec("ALTER TABLE publications ADD COLUMN post_url TEXT;");
+  }
   if (!pubColNames.includes('external_url')) {
     await db.exec("ALTER TABLE publications ADD COLUMN external_url TEXT;");
   }
-
-  // Migration dynamique non-destructive pour la table social_accounts
-  const socialAccountColumns = await db.all<{ name: string }>("PRAGMA table_info(social_accounts)");
-  const saColNames = socialAccountColumns.map(c => c.name);
-
-  // Si l'ancienne colonne account_name existe encore, on effectue la migration vers le schéma Phase 6
-  if (saColNames.includes('account_name')) {
-    await db.exec(`
-      PRAGMA foreign_keys = OFF;
-      CREATE TABLE IF NOT EXISTS social_accounts_v6 (
-        id TEXT PRIMARY KEY,
-        platform TEXT NOT NULL,
-        account_id TEXT NOT NULL,
-        username TEXT NOT NULL,
-        display_name TEXT,
-        access_token_encrypted TEXT NOT NULL,
-        refresh_token_encrypted TEXT,
-        token_expires_at TEXT,
-        status TEXT NOT NULL DEFAULT 'connected',
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-        UNIQUE(platform, account_id)
-      );
-
-      INSERT OR IGNORE INTO social_accounts_v6 (
-        id, platform, account_id, username, display_name,
-        access_token_encrypted, token_expires_at, status, created_at, updated_at
-      )
-      SELECT
-        id, platform, COALESCE(account_id, id), COALESCE(account_name, id), account_name,
-        COALESCE(encrypted_credentials, ''), token_expires_at,
-        CASE WHEN status = 'active' THEN 'connected' ELSE status END,
-        created_at, updated_at
-      FROM social_accounts;
-
-      DROP TABLE social_accounts;
-      ALTER TABLE social_accounts_v6 RENAME TO social_accounts;
-      PRAGMA foreign_keys = ON;
-    `);
+  if (!pubColNames.includes('error_message')) {
+    await db.exec("ALTER TABLE publications ADD COLUMN error_message TEXT;");
   }
 
-  await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_social_accounts_platform_account ON social_accounts(platform, account_id);");
+  // Si l'ancienne colonne tags contenait des données et hashtags est vide, migrer automatiquement
+  if (pubColNames.includes('tags')) {
+    await db.exec("UPDATE publications SET hashtags = tags WHERE (hashtags IS NULL OR hashtags = '') AND tags IS NOT NULL;");
+  }
 
-  // Initialisation des paramètres par défaut s'ils n'existent pas encore
+  // 4. Suppression propre des tables d'automatisation sociale devenues obsolètes (Phase 3)
+  await db.exec("DROP TABLE IF EXISTS publication_logs;");
+  await db.exec("DROP TABLE IF EXISTS social_accounts;");
+
+  // 5. Initialisation des paramètres par défaut s'ils n'existent pas encore
   const defaultSettings = [
     { key: 'timezone', value: process.env.DEFAULT_TIMEZONE || 'Africa/Bamako' },
-    { key: 'auto_publish_enabled', value: '1' },
     { key: 'email_notifications_enabled', value: '0' },
     { key: 'smtp_host', value: '' },
     { key: 'smtp_port', value: '587' },
@@ -109,7 +86,7 @@ export async function initializeDatabase(): Promise<void> {
     }
   }
 
-  // Récupération sécurisée des publications interrompues lors du dernier cycle
+  // 6. Récupération sécurisée des publications restées dans un statut temporaire obsolète
   await recoverInterruptedPublications();
 
   console.log('[Database] Schéma initialisé et paramètres par défaut vérifiés avec succès.');
@@ -117,7 +94,7 @@ export async function initializeDatabase(): Promise<void> {
 
 /**
  * Récupère les publications restées en statut 'publishing' lors d'un arrêt impromptu du serveur.
- * Les bascule en 'failed' de manière sécurisée pour éviter les blocages permanents ou doubles publications.
+ * Dans le workflow manuel, ces publications sont réinitialisées en 'draft' pour pouvoir être reprises.
  */
 export async function recoverInterruptedPublications(): Promise<number> {
   const db = getDatabase();
@@ -127,21 +104,15 @@ export async function recoverInterruptedPublications(): Promise<number> {
 
   if (interrupted.length === 0) return 0;
 
-  console.log(`[Database] Récupération de ${interrupted.length} publication(s) interrompue(s) lors du dernier arrêt du serveur.`);
+  console.log(`[Database] Récupération de ${interrupted.length} publication(s) en cours : réinitialisation en 'draft'.`);
 
   for (const pub of interrupted) {
     await db.run(`
       UPDATE publications
-      SET status = 'failed',
-          error_message = 'Interrompu lors du redémarrage du serveur (statut réinitialisé en failed pour sécurité)',
+      SET status = 'draft',
           updated_at = datetime('now')
       WHERE id = ?
     `, [pub.id]);
-
-    await db.run(`
-      INSERT INTO publication_logs (id, publication_id, event, message, details, created_at)
-      VALUES (?, ?, 'server_restart_recovery', 'Publication interrompue par l arrêt du serveur réinitialisée en failed', NULL, datetime('now'))
-    `, [crypto.randomUUID(), pub.id]);
   }
 
   return interrupted.length;

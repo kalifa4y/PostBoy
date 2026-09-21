@@ -43,11 +43,9 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
     // Nettoyage base avant chaque test
     const db = getDatabase();
     await db.run("DELETE FROM notifications WHERE id LIKE 'notif_%' OR id LIKE '%-%'");
-    await db.run("DELETE FROM publication_logs WHERE id LIKE 'log_%' OR id LIKE '%-%'");
     await db.run("DELETE FROM publications WHERE id LIKE 'pub_%'");
     await db.run("DELETE FROM videos WHERE id LIKE 'vid_%'");
     await db.run("DELETE FROM campaigns WHERE id LIKE 'camp_%'");
-    await db.run("DELETE FROM social_accounts WHERE id LIKE 'sa_%'");
   });
 
   // Helpers pour insérer les données de test
@@ -67,19 +65,10 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
     `, [videoId, campaignId ?? null]);
   }
 
-  async function insertTestAccount(id = 'sa_p9_01', platform = 'tiktok', username = 'testcreator') {
-    const db = getDatabase();
-    await db.run(`
-      INSERT OR REPLACE INTO social_accounts (id, platform, account_id, username, display_name, access_token_encrypted, status)
-      VALUES (?, ?, ?, ?, 'Test Creator', 'dummy_enc_token', 'connected')
-    `, [id, platform, `acc_${id}`, username]);
-  }
-
   async function insertPublication(pub: {
     id: string;
     videoId?: string;
     campaignId?: string | null;
-    socialAccountId?: string | null;
     platform: string;
     title: string;
     status: string;
@@ -92,15 +81,14 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
 
     await db.run(`
       INSERT INTO publications (
-        id, video_id, campaign_id, social_account_id, platform, title, status,
-        external_url, error_message, created_at, updated_at
+        id, video_id, campaign_id, platform, title, status,
+        post_url, error_message, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     `, [
       pub.id,
       videoId,
       pub.campaignId ?? null,
-      pub.socialAccountId ?? null,
       pub.platform,
       pub.title,
       pub.status,
@@ -174,7 +162,6 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
   describe('3. Notification de publication réussie', () => {
     beforeEach(async () => {
       await insertTestCampaign('camp_boxabl', 'BOXABL Campaign');
-      await insertTestAccount('sa_tt_01', 'tiktok', 'boxabl_official');
     });
 
     it('3.1. Envoie un email formaté avec l URL du post si disponible', async () => {
@@ -183,7 +170,6 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
       await insertPublication({
         id: pubId,
         campaignId: 'camp_boxabl',
-        socialAccountId: 'sa_tt_01',
         platform: 'tiktok',
         title: 'Maison Pliable Boxabl en 1h',
         status: 'published',
@@ -200,7 +186,6 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
       expect(mailArgs.subject).toContain('PostBoy — Publication réussie — Tiktok — BOXABL Campaign');
       expect(mailArgs.text).toContain(expectedUrl);
       expect(mailArgs.text).toContain('BOXABL Campaign');
-      expect(mailArgs.text).toContain('@boxabl_official');
       expect(mailArgs.html).toContain(expectedUrl);
 
       // Vérification de la persistance dans la base
@@ -210,10 +195,6 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
       expect(notif.type).toBe('publication_published');
       expect(notif.status).toBe('sent');
       expect(notif.recipient).toBe('admin@example.com');
-
-      // Vérification des logs d'audit
-      const log = await db.get<any>('SELECT * FROM publication_logs WHERE publication_id = ? AND event = ?', [pubId, 'email_notification_sent']);
-      expect(log).toBeDefined();
     });
 
     it('3.2. Affiche "Non disponible pour le moment" si external_url est NULL', async () => {
@@ -221,7 +202,6 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
       await insertPublication({
         id: pubId,
         campaignId: 'camp_boxabl',
-        socialAccountId: 'sa_tt_01',
         platform: 'tiktok',
         title: 'Vidéo en attente d URL',
         status: 'published',
@@ -258,7 +238,6 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
   describe('4. Notification de publication échouée', () => {
     beforeEach(async () => {
       await insertTestCampaign('camp_boxabl', 'BOXABL Campaign');
-      await insertTestAccount('sa_ig_01', 'instagram', 'boxabl_ig');
     });
 
     it('4.1. Envoie une alerte avec le motif de l erreur assaini', async () => {
@@ -267,7 +246,6 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
       await insertPublication({
         id: pubId,
         campaignId: 'camp_boxabl',
-        socialAccountId: 'sa_ig_01',
         platform: 'instagram',
         title: 'Reels Instagram Boxabl',
         status: 'failed',
@@ -299,7 +277,6 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
   describe('5. Idempotence des notifications', () => {
     beforeEach(async () => {
       await insertTestCampaign('camp_idemp', 'Campagne Idempotence');
-      await insertTestAccount('sa_idemp', 'youtube', 'yt_channel');
     });
 
     it('5.1. N envoie pas de deuxième email si un email de succès est déjà enregistré (status sent)', async () => {
@@ -307,7 +284,6 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
       await insertPublication({
         id: pubId,
         campaignId: 'camp_idemp',
-        socialAccountId: 'sa_idemp',
         platform: 'youtube',
         title: 'Titre Test',
         status: 'published',
@@ -331,7 +307,6 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
       await insertPublication({
         id: pubId,
         campaignId: 'camp_idemp',
-        socialAccountId: 'sa_idemp',
         platform: 'youtube',
         title: 'Titre Failed',
         status: 'failed'

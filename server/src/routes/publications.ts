@@ -12,21 +12,21 @@ export interface PublicationRow {
   id: string;
   video_id: string;
   campaign_id: string | null;
-  social_account_id: string | null;
   platform: AllowedPlatform;
   title: string;
   caption: string | null;
-  description: string | null;
-  tags: string | null;
+  description?: string | null;
+  hashtags?: string | null;
+  tags?: string | null;
+  notes?: string | null;
   status: AllowedStatus;
   scheduled_at: string | null;
   published_at: string | null;
-  external_post_id: string | null;
   post_url: string | null;
-  external_url: string | null;
+  external_url?: string | null;
   error_message: string | null;
-  retry_count: number;
-  max_retries: number;
+  is_overdue?: boolean;
+  copy_text?: string;
   created_at: string;
   updated_at: string;
   campaign_name: string | null;
@@ -37,15 +37,37 @@ export interface PublicationRow {
   video_file_size: number | null;
   video_duration: number | null;
   video_thumbnail_path: string | null;
-  social_account_username?: string | null;
-  social_account_display_name?: string | null;
+}
+
+export function formatPublication(row: any): PublicationRow {
+  const scheduledAt = row.scheduled_at;
+  const isOverdue = row.status === 'scheduled' &&
+    !!scheduledAt &&
+    !isNaN(new Date(scheduledAt).getTime()) &&
+    new Date(scheduledAt).getTime() < Date.now();
+
+  const caption = row.caption || '';
+  const hashtags = row.hashtags || row.tags || '';
+  const copyText = [caption, hashtags].filter(Boolean).join('\n\n');
+  const resolvedUrl = row.post_url ?? row.external_url ?? null;
+
+  return {
+    ...row,
+    post_url: resolvedUrl,
+    external_url: resolvedUrl,
+    hashtags: row.hashtags ?? row.tags ?? null,
+    tags: row.hashtags ?? row.tags ?? null,
+    notes: row.notes ?? null,
+    is_overdue: Boolean(isOverdue),
+    copy_text: copyText
+  };
 }
 
 export async function publicationRoutes(fastify: FastifyInstance): Promise<void> {
   // Helper pour récupérer une publication avec ses jointures
   const getPublicationWithDetails = async (id: string): Promise<PublicationRow | undefined> => {
     const db = getDatabase();
-    return db.get<PublicationRow>(`
+    const row = await db.get<any>(`
       SELECT 
         p.*,
         c.name as campaign_name,
@@ -55,15 +77,15 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         v.file_path as video_file_path,
         v.file_size as video_file_size,
         v.duration as video_duration,
-        v.thumbnail_path as video_thumbnail_path,
-        sa.username as social_account_username,
-        sa.display_name as social_account_display_name
+        v.thumbnail_path as video_thumbnail_path
       FROM publications p
       LEFT JOIN campaigns c ON p.campaign_id = c.id
       LEFT JOIN videos v ON p.video_id = v.id
-      LEFT JOIN social_accounts sa ON p.social_account_id = sa.id
       WHERE p.id = ?
     `, [id]);
+
+    if (!row) return undefined;
+    return formatPublication(row);
   };
 
   // GET /api/publications - Liste des publications avec filtres et recherche
@@ -129,10 +151,11 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         conditions.push(`(
           LOWER(p.title) LIKE ? OR 
           LOWER(COALESCE(p.caption, '')) LIKE ? OR 
+          LOWER(COALESCE(p.hashtags, '')) LIKE ? OR 
           LOWER(COALESCE(v.original_name, '')) LIKE ? OR 
           LOWER(COALESCE(c.name, '')) LIKE ?
         )`);
-        params.push(queryPattern, queryPattern, queryPattern, queryPattern);
+        params.push(queryPattern, queryPattern, queryPattern, queryPattern, queryPattern);
       }
 
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -147,23 +170,21 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
           v.file_path as video_file_path,
           v.file_size as video_file_size,
           v.duration as video_duration,
-          v.thumbnail_path as video_thumbnail_path,
-          sa.username as social_account_username,
-          sa.display_name as social_account_display_name
+          v.thumbnail_path as video_thumbnail_path
         FROM publications p
         LEFT JOIN campaigns c ON p.campaign_id = c.id
         LEFT JOIN videos v ON p.video_id = v.id
-        LEFT JOIN social_accounts sa ON p.social_account_id = sa.id
         ${whereClause}
         ORDER BY datetime(COALESCE(p.scheduled_at, p.created_at)) DESC
       `;
 
-      const publications = await db.all<PublicationRow>(query, params);
+      const publications = await db.all<any>(query, params);
+      const formattedPublications = publications.map(formatPublication);
 
       return reply.code(200).send({
         status: 'success',
-        count: publications.length,
-        publications
+        count: formattedPublications.length,
+        publications: formattedPublications
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Erreur lors de la récupération des publications';
@@ -196,17 +217,19 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
     }
   });
 
-  // POST /api/publications - Création unitaire d'une publication
+  // POST /api/publications - Création unitaire d'une publication (Workflow manuel)
   fastify.post<{
     Body: {
       video_id: string;
       platform: string;
       caption?: string;
       title?: string;
+      hashtags?: string;
+      tags?: string;
+      notes?: string;
       campaign_id?: string | null;
       status?: string;
       scheduled_at?: string | null;
-      social_account_id?: string | null;
     };
   }>('/api/publications', async (request, reply) => {
     try {
@@ -216,10 +239,12 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         platform,
         caption,
         title,
+        hashtags,
+        tags,
+        notes,
         campaign_id,
         status = 'draft',
-        scheduled_at,
-        social_account_id
+        scheduled_at
       } = request.body || {};
 
       // 1. Validation de la vidéo
@@ -287,11 +312,15 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         assignedCampaignId = video.campaign_id;
       }
 
-      // 5. Titre et caption
+      // 5. Titre, caption, hashtags et notes
       const finalCaption = caption ? caption.trim() : '';
       const finalTitle = title && title.trim() !== ''
         ? title.trim()
         : (finalCaption ? finalCaption.split('\n')[0].slice(0, 100) : video.original_name);
+
+      const rawHashtags = hashtags !== undefined ? hashtags : tags;
+      const finalHashtags = rawHashtags && typeof rawHashtags === 'string' ? rawHashtags.trim() : null;
+      const finalNotes = notes && typeof notes === 'string' ? notes.trim() : null;
 
       // 6. Date programmée
       let finalScheduledAt: string | null = null;
@@ -310,22 +339,23 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
       const id = crypto.randomUUID();
       await db.run(`
         INSERT INTO publications (
-          id, video_id, campaign_id, social_account_id, platform, title, caption,
-          description, tags, status, scheduled_at, published_at, external_post_id,
-          post_url, external_url, error_message, retry_count, max_retries, created_at, updated_at
+          id, video_id, campaign_id, platform, title, caption,
+          hashtags, notes, status, scheduled_at, published_at,
+          post_url, error_message, created_at, updated_at
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?,
-          NULL, NULL, ?, ?, NULL, NULL,
-          NULL, NULL, NULL, 0, 3, datetime('now'), datetime('now')
+          ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, NULL,
+          NULL, NULL, datetime('now'), datetime('now')
         )
       `, [
         id,
         video.id,
         assignedCampaignId,
-        social_account_id && social_account_id.trim() !== '' ? social_account_id.trim() : null,
         normalizedPlatform,
         finalTitle,
         finalCaption || null,
+        finalHashtags,
+        finalNotes,
         normalizedStatus,
         finalScheduledAt
       ]);
@@ -351,6 +381,9 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
       platforms: string[];
       caption?: string;
       title?: string;
+      hashtags?: string;
+      tags?: string;
+      notes?: string;
       campaign_id?: string | null;
       status?: string;
       scheduled_at?: string | null;
@@ -363,6 +396,9 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         platforms,
         caption,
         title,
+        hashtags,
+        tags,
+        notes,
         campaign_id,
         status = 'draft',
         scheduled_at
@@ -456,6 +492,10 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         ? title.trim()
         : (finalCaption ? finalCaption.split('\n')[0].slice(0, 100) : video.original_name);
 
+      const rawHashtags = hashtags !== undefined ? hashtags : tags;
+      const finalHashtags = rawHashtags && typeof rawHashtags === 'string' ? rawHashtags.trim() : null;
+      const finalNotes = notes && typeof notes === 'string' ? notes.trim() : null;
+
       // 5. Création des publications distinctes
       const createdPublications: PublicationRow[] = [];
 
@@ -463,13 +503,13 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         const id = crypto.randomUUID();
         await db.run(`
           INSERT INTO publications (
-            id, video_id, campaign_id, social_account_id, platform, title, caption,
-            description, tags, status, scheduled_at, published_at, external_post_id,
-            post_url, external_url, error_message, retry_count, max_retries, created_at, updated_at
+            id, video_id, campaign_id, platform, title, caption,
+            hashtags, notes, status, scheduled_at, published_at,
+            post_url, error_message, created_at, updated_at
           ) VALUES (
-            ?, ?, ?, NULL, ?, ?, ?,
-            NULL, NULL, ?, ?, NULL, NULL,
-            NULL, NULL, NULL, 0, 3, datetime('now'), datetime('now')
+            ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, NULL,
+            NULL, NULL, datetime('now'), datetime('now')
           )
         `, [
           id,
@@ -478,6 +518,8 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
           plat,
           finalTitle,
           finalCaption || null,
+          finalHashtags,
+          finalNotes,
           normalizedStatus,
           finalScheduledAt
         ]);
@@ -506,6 +548,9 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
       platform?: string;
       caption?: string | null;
       title?: string;
+      hashtags?: string | null;
+      tags?: string | null;
+      notes?: string | null;
       campaign_id?: string | null;
       status?: string;
       scheduled_at?: string | null;
@@ -513,7 +558,6 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
       post_url?: string | null;
       external_url?: string | null;
       error_message?: string | null;
-      social_account_id?: string | null;
     };
   }>('/api/publications/:id', async (request, reply) => {
     try {
@@ -600,6 +644,19 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         params.push(body.caption ? body.caption.trim() : null);
       }
 
+      // Modification des hashtags / tags
+      if (body.hashtags !== undefined || body.tags !== undefined) {
+        const val = body.hashtags !== undefined ? body.hashtags : body.tags;
+        updates.push('hashtags = ?');
+        params.push(val && typeof val === 'string' && val.trim() !== '' ? val.trim() : null);
+      }
+
+      // Modification des notes
+      if (body.notes !== undefined) {
+        updates.push('notes = ?');
+        params.push(body.notes && typeof body.notes === 'string' && body.notes.trim() !== '' ? body.notes.trim() : null);
+      }
+
       // Modification du titre
       if (body.title !== undefined) {
         if (body.title && body.title.trim() !== '') {
@@ -607,7 +664,6 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
           params.push(body.title.trim());
         }
       } else if (body.caption !== undefined && body.caption) {
-        // Maintien de title synchronisé si fourni
         updates.push('title = ?');
         params.push(body.caption.trim().split('\n')[0].slice(0, 100));
       }
@@ -638,26 +694,17 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
       // Modification de l'URL externe / post_url
       if (body.external_url !== undefined || body.post_url !== undefined) {
         const urlVal = body.external_url ?? body.post_url;
-        updates.push('external_url = ?');
+        const cleanUrl = urlVal ? urlVal.trim() : null;
         updates.push('post_url = ?');
-        params.push(urlVal ? urlVal.trim() : null);
-        params.push(urlVal ? urlVal.trim() : null);
+        params.push(cleanUrl);
+        updates.push('external_url = ?');
+        params.push(cleanUrl);
       }
 
       // Modification du message d'erreur
       if (body.error_message !== undefined) {
         updates.push('error_message = ?');
         params.push(body.error_message ? body.error_message.trim() : null);
-      }
-
-      // Modification du compte social
-      if (body.social_account_id !== undefined) {
-        if (body.social_account_id && typeof body.social_account_id === 'string' && body.social_account_id.trim() !== '' && body.social_account_id !== 'unassigned') {
-          updates.push('social_account_id = ?');
-          params.push(body.social_account_id.trim());
-        } else {
-          updates.push('social_account_id = NULL');
-        }
       }
 
       if (updates.length === 0) {
@@ -682,6 +729,61 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Erreur lors de la mise à jour de la publication';
+      fastify.log.error(error);
+      return reply.code(500).send({ status: 'error', message });
+    }
+  });
+
+  // POST /api/publications/:id/publish - Marquer une publication comme publiée manuellement
+  fastify.post<{
+    Params: { id: string };
+    Body?: {
+      published_at?: string;
+      post_url?: string;
+      notes?: string;
+    };
+  }>('/api/publications/:id/publish', async (request, reply) => {
+    try {
+      const db = getDatabase();
+      const { id } = request.params;
+      const existing = await db.get<PublicationRow>('SELECT * FROM publications WHERE id = ?', [id]);
+      if (!existing) {
+        return reply.code(404).send({
+          status: 'error',
+          message: `Publication introuvable avec l'identifiant ${id}`
+        });
+      }
+
+      const now = new Date().toISOString();
+      const publishedAt = request.body?.published_at?.trim() || now;
+      const postUrl = request.body?.post_url !== undefined
+        ? (request.body.post_url ? request.body.post_url.trim() : null)
+        : (existing.post_url || existing.external_url || null);
+      const notes = request.body?.notes !== undefined
+        ? (request.body.notes ? request.body.notes.trim() : null)
+        : (existing.notes ?? null);
+
+      await db.run(`
+        UPDATE publications 
+        SET status = 'published',
+            published_at = ?,
+            post_url = ?,
+            external_url = ?,
+            notes = ?,
+            error_message = NULL,
+            updated_at = datetime('now')
+        WHERE id = ?
+      `, [publishedAt, postUrl, postUrl, notes, id]);
+
+      const updated = await getPublicationWithDetails(id);
+
+      return reply.code(200).send({
+        status: 'success',
+        message: 'Publication marquée comme publiée avec succès',
+        publication: updated
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Erreur lors du marquage comme publié';
       fastify.log.error(error);
       return reply.code(500).send({ status: 'error', message });
     }

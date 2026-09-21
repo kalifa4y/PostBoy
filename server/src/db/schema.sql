@@ -1,4 +1,4 @@
--- PostBoy - Schéma SQLite Relationnel
+-- PostBoy - Schéma Relationnel LibSQL / SQLite (Phase 3 : Publication Manuelle)
 
 PRAGMA foreign_keys = ON;
 
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Table des vidéos importées
+-- Table des vidéos locales (métadonnées)
 CREATE TABLE IF NOT EXISTS videos (
   id TEXT PRIMARY KEY,
   filename TEXT NOT NULL,
@@ -39,57 +39,27 @@ CREATE TABLE IF NOT EXISTS videos (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Table des comptes sociaux connectés
-CREATE TABLE IF NOT EXISTS social_accounts (
-  id TEXT PRIMARY KEY,
-  platform TEXT NOT NULL,
-  account_id TEXT NOT NULL,
-  username TEXT NOT NULL,
-  display_name TEXT,
-  access_token_encrypted TEXT NOT NULL,
-  refresh_token_encrypted TEXT,
-  token_expires_at TEXT,
-  status TEXT NOT NULL DEFAULT 'connected',
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE(platform, account_id)
-);
-
--- Table des publications
+-- Table des publications (tâches de publication manuelle)
 CREATE TABLE IF NOT EXISTS publications (
   id TEXT PRIMARY KEY,
   video_id TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
   campaign_id TEXT REFERENCES campaigns(id) ON DELETE SET NULL,
-  social_account_id TEXT REFERENCES social_accounts(id) ON DELETE SET NULL,
   platform TEXT NOT NULL,
   title TEXT NOT NULL,
   caption TEXT,
-  description TEXT,
-  tags TEXT,
+  hashtags TEXT,
+  notes TEXT,
   status TEXT NOT NULL DEFAULT 'draft',
   scheduled_at TEXT,
   published_at TEXT,
-  external_post_id TEXT,
   post_url TEXT,
   external_url TEXT,
   error_message TEXT,
-  retry_count INTEGER NOT NULL DEFAULT 0,
-  max_retries INTEGER NOT NULL DEFAULT 3,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Table des logs d'exécution des publications
-CREATE TABLE IF NOT EXISTS publication_logs (
-  id TEXT PRIMARY KEY,
-  publication_id TEXT NOT NULL REFERENCES publications(id) ON DELETE CASCADE,
-  event TEXT NOT NULL,
-  message TEXT NOT NULL,
-  details TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
--- Table des notifications
+-- Table des notifications (email / rappels)
 CREATE TABLE IF NOT EXISTS notifications (
   id TEXT PRIMARY KEY,
   publication_id TEXT REFERENCES publications(id) ON DELETE SET NULL,
@@ -108,4 +78,4 @@ CREATE INDEX IF NOT EXISTS idx_videos_campaign ON videos(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_publications_video ON publications(video_id);
 CREATE INDEX IF NOT EXISTS idx_publications_campaign ON publications(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_publications_status_scheduled ON publications(status, scheduled_at);
-CREATE INDEX IF NOT EXISTS idx_publication_logs_pub ON publication_logs(publication_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_pub ON notifications(publication_id);

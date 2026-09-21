@@ -318,4 +318,60 @@ describe('PHASE 4 - CRUD Publications API', () => {
 
     expect(res.statusCode).toBe(404);
   });
+
+  // 14. Workflow Manuel - Création avec hashtags, notes, copy_text et overdue
+  it('14. POST /api/publications supporte hashtags, notes, copy_text et calcule is_overdue', async () => {
+    const pastDate = new Date(Date.now() - 3600 * 1000).toISOString(); // 1 heure dans le passé
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/publications',
+      payload: {
+        video_id: testVideoId,
+        platform: 'tiktok',
+        title: 'TEST_MANUAL_PUB',
+        caption: 'Découvrez la vidéo de clipping!',
+        hashtags: '#clipping #viral #boxabl',
+        notes: 'Poster à 18h pile en heure de pointe',
+        status: 'scheduled',
+        scheduled_at: pastDate
+      }
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = JSON.parse(res.body);
+    expect(body.status).toBe('success');
+    expect(body.publication.hashtags).toBe('#clipping #viral #boxabl');
+    expect(body.publication.tags).toBe('#clipping #viral #boxabl');
+    expect(body.publication.notes).toBe('Poster à 18h pile en heure de pointe');
+    expect(body.publication.is_overdue).toBe(true);
+    expect(body.publication.copy_text).toContain('Découvrez la vidéo de clipping!');
+    expect(body.publication.copy_text).toContain('#clipping #viral #boxabl');
+
+    const pubId = body.publication.id;
+
+    // 15. POST /api/publications/:id/publish - Marquer comme publié
+    const pubRes = await app.inject({
+      method: 'POST',
+      url: `/api/publications/${pubId}/publish`,
+      payload: {
+        post_url: 'https://tiktok.com/@creator/video/987654',
+        notes: 'Posté avec succès depuis mobile'
+      }
+    });
+
+    expect(pubRes.statusCode).toBe(200);
+    const pubBody = JSON.parse(pubRes.body);
+    expect(pubBody.status).toBe('success');
+    expect(pubBody.publication.status).toBe('published');
+    expect(pubBody.publication.published_at).toBeDefined();
+    expect(pubBody.publication.post_url).toBe('https://tiktok.com/@creator/video/987654');
+    expect(pubBody.publication.notes).toBe('Posté avec succès depuis mobile');
+    expect(pubBody.publication.is_overdue).toBe(false); // N'est plus overdue une fois publié
+
+    // Nettoyage
+    await app.inject({
+      method: 'DELETE',
+      url: `/api/publications/${pubId}`
+    });
+  });
 });
