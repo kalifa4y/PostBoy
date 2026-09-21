@@ -6,6 +6,7 @@ import { initializeDatabase } from './db/init.js';
 import { closeDatabase } from './db/connection.js';
 import { healthRoutes } from './routes/health.js';
 import { settingsRoutes } from './routes/settings.js';
+import { dashboardRoutes } from './routes/dashboard.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
 dotenv.config();
@@ -28,9 +29,10 @@ await server.register(cors, {
   credentials: true
 });
 
-// Enregistrement des routes de fondation
+// Enregistrement des routes API
 await server.register(healthRoutes);
 await server.register(settingsRoutes);
+await server.register(dashboardRoutes);
 
 // Gestion de l'arrêt gracieux
 const handleShutdown = async (signal: string) => {

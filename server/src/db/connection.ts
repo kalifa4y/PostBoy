@@ -23,6 +23,7 @@ export function getDatabase(): DatabaseSync {
     // Optimisations de performance et intégrité
     dbInstance.exec('PRAGMA journal_mode = WAL;');
     dbInstance.exec('PRAGMA foreign_keys = ON;');
+    dbInstance.exec('PRAGMA busy_timeout = 5000;');
   }
   return dbInstance;
 }

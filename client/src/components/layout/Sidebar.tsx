@@ -21,16 +21,16 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
   const navItems = [
     {
-      id: 'foundation' as NavTab,
-      label: 'Phase 0 — Fondations',
-      icon: Layers3,
-      badge: 'Active'
-    },
-    {
       id: 'dashboard' as NavTab,
       label: 'Dashboard',
       icon: LayoutDashboard,
-      badge: 'Phase 1'
+      badge: 'Actif'
+    },
+    {
+      id: 'foundation' as NavTab,
+      label: 'Fondations & Système',
+      icon: Layers3,
+      badge: 'Phase 0'
     },
     {
       id: 'campaigns' as NavTab,

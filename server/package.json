@@ -8,7 +8,7 @@
     "build": "tsc",
     "start": "node --no-warnings=ExperimentalWarning dist/index.js",
     "db:init": "tsx --no-warnings=ExperimentalWarning src/db/init.ts",
-    "test": "vitest run"
+    "test": "vitest run --fileParallelism=false"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.2",

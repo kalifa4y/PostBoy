@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar, NavTab } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
+import { DashboardView } from './views/DashboardView';
 import { FoundationView } from './views/FoundationView';
 import { SettingsView } from './views/SettingsView';
 import { PlaceholderView } from './views/PlaceholderView';
 import { HealthStatus } from './types/domain';
 import {
-  LayoutDashboard,
   Layers,
   Film,
   Send,
@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<NavTab>('foundation');
+  const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [loadingHealth, setLoadingHealth] = useState<boolean>(true);
 
@@ -94,17 +94,9 @@ export const App: React.FC = () => {
           )}
 
           {activeTab === 'dashboard' && (
-            <PlaceholderView
-              phaseNumber={1}
-              title="Dashboard & Métriques"
-              description="Tableau de bord centralisé pour visualiser les publications en cours, les succès, les erreurs et les métriques clés."
-              icon={LayoutDashboard}
-              deliverables={[
-                'Vue d ensemble des publications récentes',
-                'Statistiques globales et taux de succès',
-                'Alertes d erreurs ou de republications nécessaires',
-                'Accès rapide à la planification'
-              ]}
+            <DashboardView
+              onNavigate={setActiveTab}
+              activeTimezone={health?.activeTimezone || 'Africa/Bamako'}
             />
           )}
 

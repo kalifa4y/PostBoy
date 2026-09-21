@@ -92,6 +92,45 @@ export interface AppSettings {
   notification_email?: string;
 }
 
+export interface DashboardStats {
+  videosToPublish: number;
+  scheduledCount: number;
+  publishedCount: number;
+  failedCount: number;
+  totalVideos: number;
+}
+
+export interface UpcomingPublicationItem {
+  id: string;
+  platform: SocialPlatform | string;
+  title: string;
+  scheduled_at: string | null;
+  status: string;
+  campaign_name: string | null;
+  campaign_color: string | null;
+  video_name: string | null;
+}
+
+export interface RecentPublicationItem {
+  id: string;
+  platform: SocialPlatform | string;
+  title: string;
+  published_at: string | null;
+  status: string;
+  post_url: string | null;
+  error_message: string | null;
+  campaign_name: string | null;
+  campaign_color: string | null;
+  video_name: string | null;
+}
+
+export interface DashboardData {
+  status: 'success' | 'error';
+  stats: DashboardStats;
+  upcomingPublications: UpcomingPublicationItem[];
+  recentPublications: RecentPublicationItem[];
+}
+
 export interface HealthStatus {
   status: 'ok' | 'error';
   service: string;
