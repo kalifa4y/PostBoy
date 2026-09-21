@@ -76,27 +76,27 @@ vercel --prod
 
 ## 4. VÉRIFICATION POST-DÉPLOIEMENT
 
-Le projet est déjà déployé et vérifié en production sur : **`https://postboy-inky.vercel.app`** (alias principal attribué par Vercel) ainsi que sur `https://postboy-kalifas-projects.vercel.app`.
+L'URL publique officielle et unique de PostBoy en production est : **`https://postboy.vercel.app`**.
 
 1. **Vérification de l'API Santé :**
-   Accédez à : `https://postboy-inky.vercel.app/api/health`
-   * Résultat en production : `{"status":"ok","service":"PostBoy API","version":"0.1.0","database":"connected","activeTimezone":"Africa/Bamako","tablesCount":5,"tables":["settings","campaigns","videos","publications","notifications"]}`
+   Accédez à : `https://postboy.vercel.app/api/health`
+   * Format de réponse attendu : `{"status":"ok","service":"PostBoy API","version":"0.1.0","database":"connected","activeTimezone":"Africa/Bamako","tablesCount":5,"tables":["settings","campaigns","videos","publications","notifications"]}`
 2. **Vérification de la base Turso :**
-   Accédez à : `https://postboy-inky.vercel.app/api/campaigns`
+   Accédez à : `https://postboy.vercel.app/api/campaigns`
    * Résultat : `{"status":"success","campaigns":[]}` (connecté à Turso AWS US-East-1).
 3. **Vérification du Frontend :**
-   Accédez à : `https://postboy-inky.vercel.app/`
+   Accédez à : `https://postboy.vercel.app/`
    * Résultat : Chargement instantané du Dashboard PostBoy depuis PC ou smartphone, avec navigation fluide (Dashboard, Publications, Calendrier, Vidéothèque, Campagnes, Paramètres).
 4. **Vérification de la protection Cron :**
-   * `curl https://postboy-inky.vercel.app/api/cron/morning` → `401 Unauthorized` (`Invalid or missing cron authorization key`).
-   * `curl https://postboy-inky.vercel.app/api/cron/morning?key=VOTRE_CRON_SECRET` → `200 OK` (`job: "morning"`).
+   * `curl https://postboy.vercel.app/api/cron/morning` → `401 Unauthorized` (`Invalid or missing cron authorization key`).
+   * `curl https://postboy.vercel.app/api/cron/morning?key=VOTRE_CRON_SECRET` → `200 OK` (`job: "morning"`).
 5. **Vérification des tâches Cron sur Vercel :**
    Dans le tableau de bord Vercel du projet PostBoy (**Settings** → **Cron Jobs**), les 3 tâches quotidiennes sont actives :
    * `/api/cron/morning` (`0 6 * * *` — 06:00 UTC)
    * `/api/cron/check-reminders` (`0 14 * * *` — 14:00 UTC)
    * `/api/cron/evening` (`0 22 * * *` — 22:00 UTC)
 
-> **Note sur le plan Vercel Hobby :** Vercel restreint les crons automatiques à des fréquences quotidiennes au minimum (1 fois par jour max). Si un rappel toutes les 30 minutes est nécessaire, un ping externe gratuit (ex: cron-job.org ou GitHub Actions) peut appeler `https://postboy-inky.vercel.app/api/cron/check-reminders?key=CRON_SECRET`.
+> **Note sur le plan Vercel Hobby :** Vercel restreint les crons automatiques à des fréquences quotidiennes au minimum (1 fois par jour max). Si un rappel toutes les 30 minutes est nécessaire, un ping externe gratuit (ex: cron-job.org ou GitHub Actions) peut appeler `https://postboy.vercel.app/api/cron/check-reminders?key=CRON_SECRET`.
 
 ---
 
