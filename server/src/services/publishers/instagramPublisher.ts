@@ -84,9 +84,28 @@ export class InstagramPublisher implements PlatformPublisher {
       const publishData = await publishRes.json() as any;
       const publishedId = publishData.id || creationId;
 
+      // 4. Tentative immédiate de récupération du permalink officiel (Phase 8)
+      let postUrl: string | undefined;
+      try {
+        const permalinkUrl = `https://graph.facebook.com/v21.0/${publishedId}?fields=id,permalink&access_token=${encodeURIComponent(ctx.decryptedAccessToken)}`;
+        const permalinkRes = await fetch(permalinkUrl, {
+          method: 'GET',
+          signal: AbortSignal.timeout(5000)
+        });
+        if (permalinkRes.ok) {
+          const permalinkData = await permalinkRes.json() as any;
+          if (permalinkData.permalink && typeof permalinkData.permalink === 'string') {
+            postUrl = permalinkData.permalink;
+          }
+        }
+      } catch {
+        // Si le permalink n'est pas immédiatement prêt, la publication reste un succès et l'URL pourra être résolue ultérieurement
+      }
+
       return {
         success: true,
-        externalPostId: publishedId
+        externalPostId: publishedId,
+        postUrl
       };
     } catch (err: any) {
       if (err.name === 'TimeoutError' || err.name === 'AbortError') {

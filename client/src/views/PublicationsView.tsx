@@ -15,7 +15,8 @@ import {
   Film,
   Layers,
   AlertTriangle,
-  RotateCcw
+  RotateCcw,
+  Link2
 } from 'lucide-react';
 import { Publication, Video, Campaign, SocialPlatform, PublicationStatus, SocialAccount } from '../types/domain';
 
@@ -71,6 +72,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [socialAccounts, setSocialAccounts] = useState<SocialAccount[]>([]);
   const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [resolvingUrlId, setResolvingUrlId] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -455,6 +457,36 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
     }
   };
 
+  // Résolution manuelle de l'URL publique officielle (Phase 8)
+  const handleResolveUrl = async (pub: Publication) => {
+    try {
+      setResolvingUrlId(pub.id);
+      setActionFeedback(null);
+
+      const res = await fetch(`/api/publications/${pub.id}/resolve-url`, {
+        method: 'POST'
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.status !== 'success') {
+        throw new Error(data.message || "Impossible de récupérer l'URL pour le moment.");
+      }
+
+      setActionFeedback({
+        type: 'success',
+        message: data.message || `URL officielle résolue avec succès : ${data.external_url}`
+      });
+
+      await fetchPublications();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erreur lors de la résolution de l'URL";
+      setActionFeedback({ type: 'error', message: msg });
+      await fetchPublications();
+    } finally {
+      setResolvingUrlId(null);
+    }
+  };
+
   // Ouverture du modal de duplication vers une autre plateforme
   const handleOpenDuplicate = (pub: Publication) => {
     setDuplicatingPublication(pub);
@@ -782,6 +814,18 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                       <p className="text-xs text-ows-text-muted line-clamp-2" title={pub.caption || pub.title}>
                         {pub.caption || <span className="text-ows-text-subtle italic">Aucune légende</span>}
                       </p>
+                      {pub.external_url && (
+                        <a
+                          href={pub.external_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 mt-1 text-[11px] text-ows-accent hover:underline font-mono"
+                          title="Ouvrir le post officiel dans un nouvel onglet"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Voir le post
+                        </a>
+                      )}
                     </td>
 
                     {/* Programmation */}
@@ -811,13 +855,29 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                           </button>
                         )}
 
+                        {/* Action Récupérer l'URL (Phase 8) si publiée mais sans external_url */}
+                        {pub.status === 'published' && !pub.external_url && (
+                          <button
+                            onClick={() => handleResolveUrl(pub)}
+                            disabled={resolvingUrlId === pub.id}
+                            className="p-1.5 text-ows-accent hover:text-ows-accent-hover hover:bg-ows-accent/10 rounded transition-colors disabled:opacity-50"
+                            title="Récupérer l'URL officielle (API)"
+                          >
+                            {resolvingUrlId === pub.id ? (
+                              <RotateCcw className="w-4 h-4 animate-spin text-amber-400" />
+                            ) : (
+                              <Link2 className="w-4 h-4" />
+                            )}
+                          </button>
+                        )}
+
                         {pub.external_url && (
                           <a
                             href={pub.external_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="p-1.5 text-ows-text-subtle hover:text-ows-accent transition-colors"
-                            title="Voir la publication externe"
+                            className="p-1.5 text-ows-accent hover:text-ows-accent-hover hover:bg-ows-accent/10 rounded transition-colors"
+                            title="Voir la publication externe (nouvel onglet)"
                           >
                             <ExternalLink className="w-4 h-4" />
                           </a>

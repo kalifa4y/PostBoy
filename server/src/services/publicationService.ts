@@ -225,10 +225,11 @@ export class PublicationService {
               published_at = datetime('now'),
               external_post_id = COALESCE(?, external_post_id),
               post_url = COALESCE(?, post_url),
+              external_url = COALESCE(?, external_url),
               error_message = NULL,
               updated_at = datetime('now')
           WHERE id = ?
-        `).run(result.externalPostId || null, result.postUrl || null, publicationId);
+        `).run(result.externalPostId || null, result.postUrl || null, result.postUrl || null, publicationId);
 
         // Ajout log d'exécution
         const logId = crypto.randomUUID();

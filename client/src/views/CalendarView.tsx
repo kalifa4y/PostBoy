@@ -10,7 +10,8 @@ import {
   RotateCcw,
   AlertCircle,
   X,
-  CalendarDays
+  CalendarDays,
+  ExternalLink
 } from 'lucide-react';
 import { Publication, Campaign, SocialPlatform, PublicationStatus } from '../types/domain';
 
@@ -1001,9 +1002,22 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
 
               {/* URL Externe si déjà publiée */}
               <div>
-                <label className="block text-xs font-medium text-ows-text-muted mb-1.5">
-                  Lien externe de publication (optionnel)
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-medium text-ows-text-muted">
+                    Lien externe de publication (optionnel)
+                  </label>
+                  {editExternalUrl && (
+                    <a
+                      href={editExternalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-ows-accent hover:underline inline-flex items-center gap-1 font-mono"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Voir le post
+                    </a>
+                  )}
+                </div>
                 <input
                   type="url"
                   value={editExternalUrl}
