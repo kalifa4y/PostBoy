@@ -4,12 +4,12 @@ import { Header } from './components/layout/Header';
 import { DashboardView } from './views/DashboardView';
 import { CampaignsView } from './views/CampaignsView';
 import { VideosView } from './views/VideosView';
+import { PublicationsView } from './views/PublicationsView';
 import { FoundationView } from './views/FoundationView';
 import { SettingsView } from './views/SettingsView';
 import { PlaceholderView } from './views/PlaceholderView';
 import { HealthStatus } from './types/domain';
 import {
-  Send,
   Calendar,
   Share2
 } from 'lucide-react';
@@ -109,17 +109,7 @@ export const App: React.FC = () => {
           )}
 
           {activeTab === 'publications' && (
-            <PlaceholderView
-              phaseNumber={4}
-              title="CRUD Publications Multi-Plateformes"
-              description="Déclinaison d une vidéo en plusieurs publications adaptées (TikTok, Instagram, YouTube Shorts, etc.)."
-              icon={Send}
-              deliverables={[
-                'Création d une ou plusieurs publications par vidéo',
-                'Personnalisation du titre, description et hashtags par réseau',
-                'Gestion du cycle de vie et statut (draft, scheduled, etc.)'
-              ]}
-            />
+            <PublicationsView activeTimezone={health?.activeTimezone || 'Africa/Bamako'} />
           )}
 
           {activeTab === 'calendar' && (

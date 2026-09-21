@@ -12,6 +12,7 @@ import { settingsRoutes } from './routes/settings.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { campaignRoutes } from './routes/campaigns.js';
 import { videoRoutes } from './routes/videos.js';
+import { publicationRoutes } from './routes/publications.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
 dotenv.config();
@@ -62,6 +63,7 @@ await server.register(settingsRoutes);
 await server.register(dashboardRoutes);
 await server.register(campaignRoutes);
 await server.register(videoRoutes);
+await server.register(publicationRoutes);
 
 // Gestion de l'arrêt gracieux
 const handleShutdown = async (signal: string) => {

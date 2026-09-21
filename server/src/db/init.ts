@@ -37,6 +37,16 @@ export function initializeDatabase(): void {
     db.exec("ALTER TABLE videos ADD COLUMN status TEXT NOT NULL DEFAULT 'ready';");
   }
 
+  // Migration dynamique non-destructive pour la table publications
+  const publicationColumns = db.prepare("PRAGMA table_info(publications)").all() as Array<{ name: string }>;
+  const pubColNames = publicationColumns.map(c => c.name);
+  if (!pubColNames.includes('caption')) {
+    db.exec("ALTER TABLE publications ADD COLUMN caption TEXT;");
+  }
+  if (!pubColNames.includes('external_url')) {
+    db.exec("ALTER TABLE publications ADD COLUMN external_url TEXT;");
+  }
+
   // Initialisation des paramètres par défaut s'ils n'existent pas encore
   const defaultSettings = [
     { key: 'timezone', value: process.env.DEFAULT_TIMEZONE || 'Africa/Bamako' },

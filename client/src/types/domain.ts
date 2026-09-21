@@ -43,7 +43,7 @@ export interface SocialAccount {
   updated_at: string;
 }
 
-export type PublicationStatus = 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed';
+export type PublicationStatus = 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed' | 'cancelled';
 
 export interface Publication {
   id: string;
@@ -52,6 +52,7 @@ export interface Publication {
   social_account_id?: string | null;
   platform: SocialPlatform;
   title: string;
+  caption?: string | null;
   description?: string | null;
   tags?: string | null;
   status: PublicationStatus;
@@ -59,11 +60,20 @@ export interface Publication {
   published_at?: string | null;
   external_post_id?: string | null;
   post_url?: string | null;
+  external_url?: string | null;
   error_message?: string | null;
   retry_count: number;
   max_retries: number;
   created_at: string;
   updated_at: string;
+  campaign_name?: string | null;
+  campaign_color?: string | null;
+  video_original_name?: string | null;
+  video_filename?: string | null;
+  video_file_path?: string | null;
+  video_file_size?: number | null;
+  video_duration?: number | null;
+  video_thumbnail_path?: string | null;
 }
 
 export interface PublicationLog {
