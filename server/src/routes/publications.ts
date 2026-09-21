@@ -43,9 +43,9 @@ export interface PublicationRow {
 
 export async function publicationRoutes(fastify: FastifyInstance): Promise<void> {
   // Helper pour récupérer une publication avec ses jointures
-  const getPublicationWithDetails = (id: string): PublicationRow | undefined => {
+  const getPublicationWithDetails = async (id: string): Promise<PublicationRow | undefined> => {
     const db = getDatabase();
-    return db.prepare(`
+    return db.get<PublicationRow>(`
       SELECT 
         p.*,
         c.name as campaign_name,
@@ -63,7 +63,7 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
       LEFT JOIN videos v ON p.video_id = v.id
       LEFT JOIN social_accounts sa ON p.social_account_id = sa.id
       WHERE p.id = ?
-    `).get(id) as unknown as PublicationRow | undefined;
+    `, [id]);
   };
 
   // GET /api/publications - Liste des publications avec filtres et recherche
@@ -158,7 +158,7 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         ORDER BY datetime(COALESCE(p.scheduled_at, p.created_at)) DESC
       `;
 
-      const publications = db.prepare(query).all(...params) as unknown as PublicationRow[];
+      const publications = await db.all<PublicationRow>(query, params);
 
       return reply.code(200).send({
         status: 'success',
@@ -176,7 +176,7 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
   fastify.get<{ Params: { id: string } }>('/api/publications/:id', async (request, reply) => {
     try {
       const { id } = request.params;
-      const publication = getPublicationWithDetails(id);
+      const publication = await getPublicationWithDetails(id);
 
       if (!publication) {
         return reply.code(404).send({
@@ -230,11 +230,11 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         });
       }
 
-      const video = db.prepare('SELECT id, campaign_id, original_name FROM videos WHERE id = ?').get(video_id.trim()) as unknown as {
+      const video = await db.get<{
         id: string;
         campaign_id: string | null;
         original_name: string;
-      } | undefined;
+      }>('SELECT id, campaign_id, original_name FROM videos WHERE id = ?', [video_id.trim()]);
 
       if (!video) {
         return reply.code(404).send({
@@ -272,7 +272,7 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
       let assignedCampaignId: string | null = null;
       if (campaign_id !== undefined) {
         if (campaign_id && typeof campaign_id === 'string' && campaign_id.trim() !== '' && campaign_id !== 'unassigned') {
-          const campaignExists = db.prepare('SELECT id FROM campaigns WHERE id = ?').get(campaign_id.trim());
+          const campaignExists = await db.get<{ id: string }>('SELECT id FROM campaigns WHERE id = ?', [campaign_id.trim()]);
           if (!campaignExists) {
             return reply.code(400).send({
               status: 'error',
@@ -306,9 +306,9 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         finalScheduledAt = scheduled_at.trim();
       }
 
-      // 7. Insertion atomique dans SQLite
+      // 7. Insertion atomique dans la base
       const id = crypto.randomUUID();
-      db.prepare(`
+      await db.run(`
         INSERT INTO publications (
           id, video_id, campaign_id, social_account_id, platform, title, caption,
           description, tags, status, scheduled_at, published_at, external_post_id,
@@ -318,7 +318,7 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
           NULL, NULL, ?, ?, NULL, NULL,
           NULL, NULL, NULL, 0, 3, datetime('now'), datetime('now')
         )
-      `).run(
+      `, [
         id,
         video.id,
         assignedCampaignId,
@@ -328,9 +328,9 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         finalCaption || null,
         normalizedStatus,
         finalScheduledAt
-      );
+      ]);
 
-      const created = getPublicationWithDetails(id);
+      const created = await getPublicationWithDetails(id);
 
       return reply.code(201).send({
         status: 'success',
@@ -376,11 +376,11 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         });
       }
 
-      const video = db.prepare('SELECT id, campaign_id, original_name FROM videos WHERE id = ?').get(video_id.trim()) as unknown as {
+      const video = await db.get<{
         id: string;
         campaign_id: string | null;
         original_name: string;
-      } | undefined;
+      }>('SELECT id, campaign_id, original_name FROM videos WHERE id = ?', [video_id.trim()]);
 
       if (!video) {
         return reply.code(404).send({
@@ -436,7 +436,7 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
       let assignedCampaignId: string | null = null;
       if (campaign_id !== undefined) {
         if (campaign_id && typeof campaign_id === 'string' && campaign_id.trim() !== '' && campaign_id !== 'unassigned') {
-          const campaignExists = db.prepare('SELECT id FROM campaigns WHERE id = ?').get(campaign_id.trim());
+          const campaignExists = await db.get<{ id: string }>('SELECT id FROM campaigns WHERE id = ?', [campaign_id.trim()]);
           if (!campaignExists) {
             return reply.code(400).send({
               status: 'error',
@@ -458,21 +458,20 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
 
       // 5. Création des publications distinctes
       const createdPublications: PublicationRow[] = [];
-      const insertStmt = db.prepare(`
-        INSERT INTO publications (
-          id, video_id, campaign_id, social_account_id, platform, title, caption,
-          description, tags, status, scheduled_at, published_at, external_post_id,
-          post_url, external_url, error_message, retry_count, max_retries, created_at, updated_at
-        ) VALUES (
-          ?, ?, ?, NULL, ?, ?, ?,
-          NULL, NULL, ?, ?, NULL, NULL,
-          NULL, NULL, NULL, 0, 3, datetime('now'), datetime('now')
-        )
-      `);
 
       for (const plat of normalizedPlatforms) {
         const id = crypto.randomUUID();
-        insertStmt.run(
+        await db.run(`
+          INSERT INTO publications (
+            id, video_id, campaign_id, social_account_id, platform, title, caption,
+            description, tags, status, scheduled_at, published_at, external_post_id,
+            post_url, external_url, error_message, retry_count, max_retries, created_at, updated_at
+          ) VALUES (
+            ?, ?, ?, NULL, ?, ?, ?,
+            NULL, NULL, ?, ?, NULL, NULL,
+            NULL, NULL, NULL, 0, 3, datetime('now'), datetime('now')
+          )
+        `, [
           id,
           video.id,
           assignedCampaignId,
@@ -481,8 +480,8 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
           finalCaption || null,
           normalizedStatus,
           finalScheduledAt
-        );
-        const p = getPublicationWithDetails(id);
+        ]);
+        const p = await getPublicationWithDetails(id);
         if (p) createdPublications.push(p);
       }
 
@@ -521,7 +520,7 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
       const db = getDatabase();
       const { id } = request.params;
 
-      const existing = db.prepare('SELECT * FROM publications WHERE id = ?').get(id) as unknown as PublicationRow | undefined;
+      const existing = await db.get<PublicationRow>('SELECT * FROM publications WHERE id = ?', [id]);
       if (!existing) {
         return reply.code(404).send({
           status: 'error',
@@ -541,7 +540,7 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
             message: 'Une publication doit obligatoirement être rattachée à une vidéo valide.'
           });
         }
-        const videoExists = db.prepare('SELECT id FROM videos WHERE id = ?').get(body.video_id.trim());
+        const videoExists = await db.get<{ id: string }>('SELECT id FROM videos WHERE id = ?', [body.video_id.trim()]);
         if (!videoExists) {
           return reply.code(404).send({
             status: 'error',
@@ -581,7 +580,7 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
       // Modification de la campagne
       if (body.campaign_id !== undefined) {
         if (body.campaign_id && typeof body.campaign_id === 'string' && body.campaign_id.trim() !== '' && body.campaign_id !== 'unassigned') {
-          const campaignExists = db.prepare('SELECT id FROM campaigns WHERE id = ?').get(body.campaign_id.trim());
+          const campaignExists = await db.get<{ id: string }>('SELECT id FROM campaigns WHERE id = ?', [body.campaign_id.trim()]);
           if (!campaignExists) {
             return reply.code(400).send({
               status: 'error',
@@ -665,16 +664,16 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         return reply.code(200).send({
           status: 'success',
           message: 'Aucune modification transmise',
-          publication: getPublicationWithDetails(id)
+          publication: await getPublicationWithDetails(id)
         });
       }
 
       updates.push("updated_at = datetime('now')");
       params.push(id);
 
-      db.prepare(`UPDATE publications SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+      await db.run(`UPDATE publications SET ${updates.join(', ')} WHERE id = ?`, params);
 
-      const updated = getPublicationWithDetails(id);
+      const updated = await getPublicationWithDetails(id);
 
       return reply.code(200).send({
         status: 'success',
@@ -694,11 +693,11 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
       const db = getDatabase();
       const { id } = request.params;
 
-      const existing = db.prepare('SELECT id, video_id, title FROM publications WHERE id = ?').get(id) as unknown as {
+      const existing = await db.get<{
         id: string;
         video_id: string;
         title: string;
-      } | undefined;
+      }>('SELECT id, video_id, title FROM publications WHERE id = ?', [id]);
 
       if (!existing) {
         return reply.code(404).send({
@@ -707,8 +706,8 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         });
       }
 
-      // Suppression dans SQLite UNIQUEMENT. La vidéo et le fichier physique ne sont JAMAIS supprimés.
-      db.prepare('DELETE FROM publications WHERE id = ?').run(id);
+      // Suppression dans la base UNIQUEMENT. La vidéo et le fichier physique ne sont JAMAIS supprimés.
+      await db.run('DELETE FROM publications WHERE id = ?', [id]);
 
       return reply.code(200).send({
         status: 'success',

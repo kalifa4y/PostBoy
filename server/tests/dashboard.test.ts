@@ -8,7 +8,7 @@ describe('PHASE 1 - Dashboard API & Statistiques', () => {
   let app: FastifyInstance;
 
   beforeAll(async () => {
-    initializeDatabase();
+    await initializeDatabase();
     app = Fastify({ logger: false });
     await app.register(dashboardRoutes);
     await app.ready();
@@ -42,27 +42,27 @@ describe('PHASE 1 - Dashboard API & Statistiques', () => {
     const db = getDatabase();
 
     // Insertion d'une campagne de test
-    db.prepare(`
+    await db.run(`
       INSERT INTO campaigns (id, name, description, color) 
       VALUES ('camp_test', 'BOXABL Campaign', 'Test Campaign', '#08EB08')
-    `).run();
+    `);
 
     // Insertion de 2 vidéos
-    db.prepare(`
+    await db.run(`
       INSERT INTO videos (id, filename, original_name, file_path, file_size, mime_type, campaign_id) 
       VALUES 
         ('vid_test_1', 'clip_01.mp4', 'Clip 01 Original', '/uploads/clip_01.mp4', 1048576, 'video/mp4', 'camp_test'),
         ('vid_test_2', 'clip_02.mp4', 'Clip 02 Original', '/uploads/clip_02.mp4', 2097152, 'video/mp4', 'camp_test')
-    `).run();
+    `);
 
     // Insertion de 3 publications : 1 programmée, 1 publiée, 1 échouée
-    db.prepare(`
+    await db.run(`
       INSERT INTO publications (id, video_id, campaign_id, platform, title, status, scheduled_at, published_at, post_url, error_message)
       VALUES 
         ('pub_test_1', 'vid_test_1', 'camp_test', 'tiktok', 'Clip 1 sur TikTok', 'scheduled', '2026-09-22 14:00:00', NULL, NULL, NULL),
         ('pub_test_2', 'vid_test_1', 'camp_test', 'youtube', 'Clip 1 sur YouTube', 'published', NULL, '2026-09-21 12:00:00', 'https://youtube.com/shorts/sample123', NULL),
         ('pub_test_3', 'vid_test_2', 'camp_test', 'instagram', 'Clip 2 sur Instagram', 'failed', NULL, NULL, NULL, 'Token expiré')
-    `).run();
+    `);
 
     const res = await app.inject({
       method: 'GET',
@@ -96,8 +96,8 @@ describe('PHASE 1 - Dashboard API & Statistiques', () => {
     expect(failed.status).toBe('failed');
 
     // Nettoyage des données de test
-    db.prepare("DELETE FROM publications WHERE id LIKE 'pub_test_%'").run();
-    db.prepare("DELETE FROM videos WHERE id LIKE 'vid_test_%'").run();
-    db.prepare("DELETE FROM campaigns WHERE id = 'camp_test'").run();
+    await db.run("DELETE FROM publications WHERE id LIKE 'pub_test_%'");
+    await db.run("DELETE FROM videos WHERE id LIKE 'vid_test_%'");
+    await db.run("DELETE FROM campaigns WHERE id = 'camp_test'");
   });
 });

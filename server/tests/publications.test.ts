@@ -10,36 +10,36 @@ describe('PHASE 4 - CRUD Publications API', () => {
   const testVideoId = 'vid_test_p4';
 
   beforeAll(async () => {
-    initializeDatabase();
+    await initializeDatabase();
     app = Fastify({ logger: false });
     await app.register(publicationRoutes);
     await app.ready();
 
     const db = getDatabase();
     // Nettoyage préalable des données de test
-    db.prepare("DELETE FROM publications WHERE title LIKE 'TEST_%' OR id LIKE 'pub_test_%'").run();
-    db.prepare('DELETE FROM videos WHERE id = ?').run(testVideoId);
-    db.prepare('DELETE FROM campaigns WHERE id = ?').run(testCampaignId);
+    await db.run("DELETE FROM publications WHERE title LIKE 'TEST_%' OR id LIKE 'pub_test_%'");
+    await db.run('DELETE FROM videos WHERE id = ?', [testVideoId]);
+    await db.run('DELETE FROM campaigns WHERE id = ?', [testCampaignId]);
 
     // Création d'une campagne de test
-    db.prepare(`
+    await db.run(`
       INSERT INTO campaigns (id, name, description, color, mentions, hashtags, status, created_at, updated_at)
       VALUES (?, 'TEST_BOXABL_CAMPAIGN', 'Campagne de test phase 4', '#08EB08', '@boxabl', '#boxabl #shorts', 'active', datetime('now'), datetime('now'))
-    `).run(testCampaignId);
+    `, [testCampaignId]);
 
     // Création d'une vidéo source de test
-    db.prepare(`
+    await db.run(`
       INSERT INTO videos (id, filename, original_name, file_path, file_size, duration, mime_type, campaign_id, status, created_at, updated_at)
       VALUES (?, 'test_clip_p4.mp4', 'TEST_BOXABL_CLIP_01.mp4', '/uploads/test_clip_p4.mp4', 1048576, 15.5, 'video/mp4', ?, 'ready', datetime('now'), datetime('now'))
-    `).run(testVideoId, testCampaignId);
+    `, [testVideoId, testCampaignId]);
   });
 
   afterAll(async () => {
     const db = getDatabase();
-    db.prepare("DELETE FROM publications WHERE title LIKE 'TEST_%' OR id LIKE 'pub_test_%'").run();
-    db.prepare('DELETE FROM publications WHERE video_id = ?').run(testVideoId);
-    db.prepare('DELETE FROM videos WHERE id = ?').run(testVideoId);
-    db.prepare('DELETE FROM campaigns WHERE id = ?').run(testCampaignId);
+    await db.run("DELETE FROM publications WHERE title LIKE 'TEST_%' OR id LIKE 'pub_test_%'");
+    await db.run('DELETE FROM publications WHERE video_id = ?', [testVideoId]);
+    await db.run('DELETE FROM videos WHERE id = ?', [testVideoId]);
+    await db.run('DELETE FROM campaigns WHERE id = ?', [testCampaignId]);
     await app.close();
     closeDatabase();
   });
@@ -273,15 +273,16 @@ describe('PHASE 4 - CRUD Publications API', () => {
     expect(body.publication.caption).toContain('#futureOfLiving');
     expect(body.publication.external_url).toBe('https://www.tiktok.com/@postboy/video/123456789');
 
-    // Vérification directe dans SQLite
+    // Vérification directe dans la base
     const db = getDatabase();
-    const row = db.prepare('SELECT status, caption, external_url FROM publications WHERE id = ?').get(createdPublicationId) as {
+    const row = await db.get<{
       status: string;
       caption: string;
       external_url: string;
-    };
-    expect(row.status).toBe('scheduled');
-    expect(row.caption).toContain('#futureOfLiving');
+    }>('SELECT status, caption, external_url FROM publications WHERE id = ?', [createdPublicationId]);
+    expect(row).toBeDefined();
+    expect(row?.status).toBe('scheduled');
+    expect(row?.caption).toContain('#futureOfLiving');
   });
 
   // 12. DELETE /api/publications/:id - Suppression sécurisée
@@ -302,9 +303,9 @@ describe('PHASE 4 - CRUD Publications API', () => {
     });
     expect(checkRes.statusCode).toBe(404);
 
-    // Vérification essentielle : la vidéo source existe toujours dans SQLite !
+    // Vérification essentielle : la vidéo source existe toujours dans la base !
     const db = getDatabase();
-    const videoRow = db.prepare('SELECT id, original_name FROM videos WHERE id = ?').get(testVideoId);
+    const videoRow = await db.get('SELECT id, original_name FROM videos WHERE id = ?', [testVideoId]);
     expect(videoRow).toBeDefined();
   });
 

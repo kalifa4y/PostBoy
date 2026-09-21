@@ -97,9 +97,7 @@ export async function videoRoutes(fastify: FastifyInstance): Promise<void> {
 
       query += ' ORDER BY v.created_at DESC';
 
-      const videos = (params.length > 0
-        ? db.prepare(query).all(...params)
-        : db.prepare(query).all()) as unknown as VideoRow[];
+      const videos = await db.all<VideoRow>(query, params);
 
       return reply.code(200).send({
         status: 'success',
@@ -119,7 +117,7 @@ export async function videoRoutes(fastify: FastifyInstance): Promise<void> {
       const db = getDatabase();
       const { id } = request.params;
 
-      const video = db.prepare(`
+      const video = await db.get<VideoRow>(`
         SELECT 
           v.*,
           c.name as campaign_name,
@@ -127,7 +125,7 @@ export async function videoRoutes(fastify: FastifyInstance): Promise<void> {
         FROM videos v
         LEFT JOIN campaigns c ON v.campaign_id = c.id
         WHERE v.id = ?
-      `).get(id) as unknown as VideoRow | undefined;
+      `, [id]);
 
       if (!video) {
         return reply.code(404).send({
@@ -223,21 +221,23 @@ export async function videoRoutes(fastify: FastifyInstance): Promise<void> {
           const assignedCampaignId = fields?.campaign_id?.value || defaultCampaignId;
 
           // 5. Enregistrement dans SQLite
-          db.prepare(`
+          await db.run(`
             INSERT INTO videos (
               id, filename, original_name, file_path, file_size, duration, mime_type, 
               thumbnail_path, campaign_id, status, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, 0, ?, NULL, ?, 'ready', datetime('now'), datetime('now'))
-          `).run(id, safeFilename, originalName, `/uploads/${safeFilename}`, stats.size, mimeType, assignedCampaignId);
+          `, [id, safeFilename, originalName, `/uploads/${safeFilename}`, stats.size, mimeType, assignedCampaignId]);
 
-          const savedVideo = db.prepare(`
+          const savedVideo = await db.get<VideoRow>(`
             SELECT v.*, c.name as campaign_name, c.color as campaign_color
             FROM videos v
             LEFT JOIN campaigns c ON v.campaign_id = c.id
             WHERE v.id = ?
-          `).get(id) as unknown as VideoRow;
+          `, [id]);
 
-          uploaded.push(savedVideo);
+          if (savedVideo) {
+            uploaded.push(savedVideo);
+          }
         } catch (streamErr: unknown) {
           // En cas d'erreur de flux, nettoyer le fichier partiel
           if (fs.existsSync(targetPath)) {
@@ -274,7 +274,7 @@ export async function videoRoutes(fastify: FastifyInstance): Promise<void> {
         const { id } = request.params;
         const { campaign_id, notes, status } = request.body || {};
 
-        const existing = db.prepare('SELECT id FROM videos WHERE id = ?').get(id);
+        const existing = await db.get<{ id: string }>('SELECT id FROM videos WHERE id = ?', [id]);
         if (!existing) {
           return reply.code(404).send({
             status: 'error',
@@ -301,14 +301,14 @@ export async function videoRoutes(fastify: FastifyInstance): Promise<void> {
         updates.push("updated_at = datetime('now')");
         params.push(id);
 
-        db.prepare(`UPDATE videos SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+        await db.run(`UPDATE videos SET ${updates.join(', ')} WHERE id = ?`, params);
 
-        const updated = db.prepare(`
+        const updated = await db.get<VideoRow>(`
           SELECT v.*, c.name as campaign_name, c.color as campaign_color
           FROM videos v
           LEFT JOIN campaigns c ON v.campaign_id = c.id
           WHERE v.id = ?
-        `).get(id) as unknown as VideoRow;
+        `, [id]);
 
         return reply.code(200).send({
           status: 'success',
@@ -329,7 +329,7 @@ export async function videoRoutes(fastify: FastifyInstance): Promise<void> {
       const db = getDatabase();
       const { id } = request.params;
 
-      const video = db.prepare('SELECT id, filename, original_name FROM videos WHERE id = ?').get(id) as unknown as { id: string; filename: string; original_name: string } | undefined;
+      const video = await db.get<{ id: string; filename: string; original_name: string }>('SELECT id, filename, original_name FROM videos WHERE id = ?', [id]);
       if (!video) {
         return reply.code(404).send({
           status: 'error',
@@ -338,7 +338,7 @@ export async function videoRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       // Garde-fou essentiel : vérifier si des publications sont rattachées à cette vidéo
-      const pubCountRow = db.prepare('SELECT COUNT(*) as count FROM publications WHERE video_id = ?').get(id) as { count: number };
+      const pubCountRow = await db.get<{ count: number }>('SELECT COUNT(*) as count FROM publications WHERE video_id = ?', [id]);
       if (pubCountRow && pubCountRow.count > 0) {
         return reply.code(400).send({
           status: 'error',
@@ -356,8 +356,8 @@ export async function videoRoutes(fastify: FastifyInstance): Promise<void> {
         }
       }
 
-      // 2. Suppression dans SQLite
-      db.prepare('DELETE FROM videos WHERE id = ?').run(id);
+      // 2. Suppression dans la base
+      await db.run('DELETE FROM videos WHERE id = ?', [id]);
 
       return reply.code(200).send({
         status: 'success',

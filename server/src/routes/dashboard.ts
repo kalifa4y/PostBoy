@@ -40,35 +40,35 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
       const db = getDatabase();
 
       // 1. Vidéos à publier (vidéos n'ayant pas encore de publication marquée 'published')
-      const videosToPublishRow = db.prepare(`
+      const videosToPublishRow = await db.get<{ count: number }>(`
         SELECT COUNT(*) as count 
         FROM videos v 
         WHERE NOT EXISTS (
           SELECT 1 FROM publications p 
           WHERE p.video_id = v.id AND p.status = 'published'
         )
-      `).get() as { count: number };
+      `);
 
       // Total des vidéos
-      const totalVideosRow = db.prepare(`SELECT COUNT(*) as count FROM videos`).get() as { count: number };
+      const totalVideosRow = await db.get<{ count: number }>(`SELECT COUNT(*) as count FROM videos`);
 
       // 2. Publications programmées
-      const scheduledRow = db.prepare(`
+      const scheduledRow = await db.get<{ count: number }>(`
         SELECT COUNT(*) as count FROM publications WHERE status = 'scheduled'
-      `).get() as { count: number };
+      `);
 
       // 3. Publications publiées avec succès
-      const publishedRow = db.prepare(`
+      const publishedRow = await db.get<{ count: number }>(`
         SELECT COUNT(*) as count FROM publications WHERE status = 'published'
-      `).get() as { count: number };
+      `);
 
       // 4. Publications en échec
-      const failedRow = db.prepare(`
+      const failedRow = await db.get<{ count: number }>(`
         SELECT COUNT(*) as count FROM publications WHERE status = 'failed'
-      `).get() as { count: number };
+      `);
 
       // 5. Prochaines publications programmées (triées par date d'échéance croissante)
-      const upcomingPublications = db.prepare(`
+      const upcomingPublications = await db.all<DashboardStatsResponse['upcomingPublications'][number]>(`
         SELECT 
           p.id,
           p.platform,
@@ -84,10 +84,10 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
         WHERE p.status = 'scheduled'
         ORDER BY datetime(COALESCE(p.scheduled_at, '9999-12-31')) ASC
         LIMIT 50
-      `).all() as DashboardStatsResponse['upcomingPublications'];
+      `);
 
       // 6. Publications récentes (publiées ou échouées, triées par date décroissante)
-      const recentPublications = db.prepare(`
+      const recentPublications = await db.all<DashboardStatsResponse['recentPublications'][number]>(`
         SELECT 
           p.id,
           p.platform,
@@ -105,7 +105,7 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
         WHERE p.status IN ('published', 'failed')
         ORDER BY datetime(COALESCE(p.published_at, p.updated_at)) DESC
         LIMIT 50
-      `).all() as DashboardStatsResponse['recentPublications'];
+      `);
 
       const response: DashboardStatsResponse = {
         status: 'success',

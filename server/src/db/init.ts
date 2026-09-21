@@ -7,54 +7,54 @@ import { getDatabase } from './connection.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export function initializeDatabase(): void {
+export async function initializeDatabase(): Promise<void> {
   const db = getDatabase();
   const schemaPath = path.resolve(__dirname, 'schema.sql');
   const schemaSql = fs.readFileSync(schemaPath, 'utf-8');
 
   // Exécution du schéma
-  db.exec(schemaSql);
+  await db.exec(schemaSql);
 
   // Migration dynamique non-destructive pour la table campaigns
-  const campaignColumns = db.prepare("PRAGMA table_info(campaigns)").all() as Array<{ name: string }>;
+  const campaignColumns = await db.all<{ name: string }>("PRAGMA table_info(campaigns)");
   const colNames = campaignColumns.map(c => c.name);
   if (!colNames.includes('mentions')) {
-    db.exec("ALTER TABLE campaigns ADD COLUMN mentions TEXT;");
+    await db.exec("ALTER TABLE campaigns ADD COLUMN mentions TEXT;");
   }
   if (!colNames.includes('hashtags')) {
-    db.exec("ALTER TABLE campaigns ADD COLUMN hashtags TEXT;");
+    await db.exec("ALTER TABLE campaigns ADD COLUMN hashtags TEXT;");
   }
   if (!colNames.includes('status')) {
-    db.exec("ALTER TABLE campaigns ADD COLUMN status TEXT NOT NULL DEFAULT 'active';");
+    await db.exec("ALTER TABLE campaigns ADD COLUMN status TEXT NOT NULL DEFAULT 'active';");
   }
 
   // Migration dynamique non-destructive pour la table videos
-  const videoColumns = db.prepare("PRAGMA table_info(videos)").all() as Array<{ name: string }>;
+  const videoColumns = await db.all<{ name: string }>("PRAGMA table_info(videos)");
   const videoColNames = videoColumns.map(c => c.name);
   if (!videoColNames.includes('thumbnail_path')) {
-    db.exec("ALTER TABLE videos ADD COLUMN thumbnail_path TEXT;");
+    await db.exec("ALTER TABLE videos ADD COLUMN thumbnail_path TEXT;");
   }
   if (!videoColNames.includes('status')) {
-    db.exec("ALTER TABLE videos ADD COLUMN status TEXT NOT NULL DEFAULT 'ready';");
+    await db.exec("ALTER TABLE videos ADD COLUMN status TEXT NOT NULL DEFAULT 'ready';");
   }
 
   // Migration dynamique non-destructive pour la table publications
-  const publicationColumns = db.prepare("PRAGMA table_info(publications)").all() as Array<{ name: string }>;
+  const publicationColumns = await db.all<{ name: string }>("PRAGMA table_info(publications)");
   const pubColNames = publicationColumns.map(c => c.name);
   if (!pubColNames.includes('caption')) {
-    db.exec("ALTER TABLE publications ADD COLUMN caption TEXT;");
+    await db.exec("ALTER TABLE publications ADD COLUMN caption TEXT;");
   }
   if (!pubColNames.includes('external_url')) {
-    db.exec("ALTER TABLE publications ADD COLUMN external_url TEXT;");
+    await db.exec("ALTER TABLE publications ADD COLUMN external_url TEXT;");
   }
 
   // Migration dynamique non-destructive pour la table social_accounts
-  const socialAccountColumns = db.prepare("PRAGMA table_info(social_accounts)").all() as Array<{ name: string }>;
+  const socialAccountColumns = await db.all<{ name: string }>("PRAGMA table_info(social_accounts)");
   const saColNames = socialAccountColumns.map(c => c.name);
 
   // Si l'ancienne colonne account_name existe encore, on effectue la migration vers le schéma Phase 6
   if (saColNames.includes('account_name')) {
-    db.exec(`
+    await db.exec(`
       PRAGMA foreign_keys = OFF;
       CREATE TABLE IF NOT EXISTS social_accounts_v6 (
         id TEXT PRIMARY KEY,
@@ -88,7 +88,7 @@ export function initializeDatabase(): void {
     `);
   }
 
-  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_social_accounts_platform_account ON social_accounts(platform, account_id);");
+  await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_social_accounts_platform_account ON social_accounts(platform, account_id);");
 
   // Initialisation des paramètres par défaut s'ils n'existent pas encore
   const defaultSettings = [
@@ -102,18 +102,15 @@ export function initializeDatabase(): void {
     { key: 'notification_email', value: '' }
   ];
 
-  const checkStmt = db.prepare('SELECT value FROM settings WHERE key = ?');
-  const insertStmt = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)');
-
   for (const setting of defaultSettings) {
-    const existing = checkStmt.get(setting.key);
+    const existing = await db.get<{ value: string }>('SELECT value FROM settings WHERE key = ?', [setting.key]);
     if (!existing) {
-      insertStmt.run(setting.key, setting.value);
+      await db.run('INSERT INTO settings (key, value) VALUES (?, ?)', [setting.key, setting.value]);
     }
   }
 
   // Récupération sécurisée des publications interrompues lors du dernier cycle
-  recoverInterruptedPublications();
+  await recoverInterruptedPublications();
 
   console.log('[Database] Schéma initialisé et paramètres par défaut vérifiés avec succès.');
 }
@@ -122,29 +119,29 @@ export function initializeDatabase(): void {
  * Récupère les publications restées en statut 'publishing' lors d'un arrêt impromptu du serveur.
  * Les bascule en 'failed' de manière sécurisée pour éviter les blocages permanents ou doubles publications.
  */
-export function recoverInterruptedPublications(): number {
+export async function recoverInterruptedPublications(): Promise<number> {
   const db = getDatabase();
-  const interrupted = db.prepare(`
+  const interrupted = await db.all<{ id: string }>(`
     SELECT id FROM publications WHERE status = 'publishing'
-  `).all() as Array<{ id: string }>;
+  `);
 
   if (interrupted.length === 0) return 0;
 
   console.log(`[Database] Récupération de ${interrupted.length} publication(s) interrompue(s) lors du dernier arrêt du serveur.`);
 
   for (const pub of interrupted) {
-    db.prepare(`
+    await db.run(`
       UPDATE publications
       SET status = 'failed',
           error_message = 'Interrompu lors du redémarrage du serveur (statut réinitialisé en failed pour sécurité)',
           updated_at = datetime('now')
       WHERE id = ?
-    `).run(pub.id);
+    `, [pub.id]);
 
-    db.prepare(`
+    await db.run(`
       INSERT INTO publication_logs (id, publication_id, event, message, details, created_at)
       VALUES (?, ?, 'server_restart_recovery', 'Publication interrompue par l arrêt du serveur réinitialisée en failed', NULL, datetime('now'))
-    `).run(crypto.randomUUID(), pub.id);
+    `, [crypto.randomUUID(), pub.id]);
   }
 
   return interrupted.length;
@@ -152,5 +149,5 @@ export function recoverInterruptedPublications(): number {
 
 // Exécution directe si appelé via `npm run db:init`
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  initializeDatabase();
+  await initializeDatabase();
 }

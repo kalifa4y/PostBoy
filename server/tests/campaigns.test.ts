@@ -8,19 +8,19 @@ describe('PHASE 2 - CRUD Campaigns API', () => {
   let app: FastifyInstance;
 
   beforeAll(async () => {
-    initializeDatabase();
+    await initializeDatabase();
     app = Fastify({ logger: false });
     await app.register(campaignRoutes);
     await app.ready();
 
     // S'assurer de partir d'un état propre
     const db = getDatabase();
-    db.prepare("DELETE FROM campaigns WHERE name LIKE 'TEST_%'").run();
+    await db.run("DELETE FROM campaigns WHERE name LIKE 'TEST_%'");
   });
 
   afterAll(async () => {
     const db = getDatabase();
-    db.prepare("DELETE FROM campaigns WHERE name LIKE 'TEST_%'").run();
+    await db.run("DELETE FROM campaigns WHERE name LIKE 'TEST_%'");
     await app.close();
     closeDatabase();
   });
@@ -178,10 +178,10 @@ describe('PHASE 2 - CRUD Campaigns API', () => {
   it('9. DELETE /api/campaigns/:id doit refuser la suppression si des vidéos lui sont associées', async () => {
     const db = getDatabase();
     // Liaison temporaire d'une vidéo
-    db.prepare(`
+    await db.run(`
       INSERT INTO videos (id, filename, original_name, file_path, file_size, mime_type, campaign_id)
       VALUES ('vid_linked_test', 'test.mp4', 'test.mp4', '/uploads/test.mp4', 1024, 'video/mp4', ?)
-    `).run(createdCampaignId);
+    `, [createdCampaignId]);
 
     const res = await app.inject({
       method: 'DELETE',
@@ -193,10 +193,10 @@ describe('PHASE 2 - CRUD Campaigns API', () => {
     expect(body.message).toContain('vidéo(s) lui sont actuellement associées');
 
     // Nettoyage de la vidéo
-    db.prepare("DELETE FROM videos WHERE id = 'vid_linked_test'").run();
+    await db.run("DELETE FROM videos WHERE id = 'vid_linked_test'");
   });
 
-  // 10. Suppression effective et persistance SQLite
+  // 10. Suppression effective et persistance
   it('10. DELETE /api/campaigns/:id doit supprimer la campagne sans vidéos associées', async () => {
     const res = await app.inject({
       method: 'DELETE',
@@ -205,9 +205,9 @@ describe('PHASE 2 - CRUD Campaigns API', () => {
 
     expect(res.statusCode).toBe(200);
 
-    // Vérification directe dans SQLite
+    // Vérification directe dans la base
     const db = getDatabase();
-    const row = db.prepare('SELECT id FROM campaigns WHERE id = ?').get(createdCampaignId);
+    const row = await db.get('SELECT id FROM campaigns WHERE id = ?', [createdCampaignId]);
     expect(row).toBeUndefined();
   });
 });

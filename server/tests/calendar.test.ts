@@ -10,36 +10,36 @@ describe('PHASE 5 - Calendrier & Scheduling Manuel API', () => {
   const testVideoId = 'vid_test_p5';
 
   beforeAll(async () => {
-    initializeDatabase();
+    await initializeDatabase();
     app = Fastify({ logger: false });
     await app.register(publicationRoutes);
     await app.ready();
 
     const db = getDatabase();
     // Nettoyage préalable des données de test
-    db.prepare("DELETE FROM publications WHERE title LIKE 'TEST_CAL_%' OR id LIKE 'pub_cal_%'").run();
-    db.prepare('DELETE FROM videos WHERE id = ?').run(testVideoId);
-    db.prepare('DELETE FROM campaigns WHERE id = ?').run(testCampaignId);
+    await db.run("DELETE FROM publications WHERE title LIKE 'TEST_CAL_%' OR id LIKE 'pub_cal_%'");
+    await db.run('DELETE FROM videos WHERE id = ?', [testVideoId]);
+    await db.run('DELETE FROM campaigns WHERE id = ?', [testCampaignId]);
 
     // Création d'une campagne de test
-    db.prepare(`
+    await db.run(`
       INSERT INTO campaigns (id, name, description, color, mentions, hashtags, status, created_at, updated_at)
       VALUES (?, 'TEST_CAL_CAMPAIGN', 'Campagne de test calendrier', '#08EB08', '@boxabl', '#boxabl', 'active', datetime('now'), datetime('now'))
-    `).run(testCampaignId);
+    `, [testCampaignId]);
 
     // Création d'une vidéo source de test
-    db.prepare(`
+    await db.run(`
       INSERT INTO videos (id, filename, original_name, file_path, file_size, duration, mime_type, campaign_id, status, created_at, updated_at)
       VALUES (?, 'test_cal.mp4', 'TEST_CAL_CLIP_01.mp4', '/uploads/test_cal.mp4', 2048576, 25.0, 'video/mp4', ?, 'ready', datetime('now'), datetime('now'))
-    `).run(testVideoId, testCampaignId);
+    `, [testVideoId, testCampaignId]);
   });
 
   afterAll(async () => {
     const db = getDatabase();
-    db.prepare("DELETE FROM publications WHERE title LIKE 'TEST_CAL_%' OR id LIKE 'pub_cal_%'").run();
-    db.prepare('DELETE FROM publications WHERE video_id = ?').run(testVideoId);
-    db.prepare('DELETE FROM videos WHERE id = ?').run(testVideoId);
-    db.prepare('DELETE FROM campaigns WHERE id = ?').run(testCampaignId);
+    await db.run("DELETE FROM publications WHERE title LIKE 'TEST_CAL_%' OR id LIKE 'pub_cal_%'");
+    await db.run('DELETE FROM publications WHERE video_id = ?', [testVideoId]);
+    await db.run('DELETE FROM videos WHERE id = ?', [testVideoId]);
+    await db.run('DELETE FROM campaigns WHERE id = ?', [testCampaignId]);
     await app.close();
     closeDatabase();
   });
@@ -175,10 +175,10 @@ describe('PHASE 5 - Calendrier & Scheduling Manuel API', () => {
     expect(body.status).toBe('success');
     expect(body.publication.scheduled_at).toBe(newDate);
 
-    // Vérification directe dans SQLite
+    // Vérification directe dans la base
     const db = getDatabase();
-    const row = db.prepare('SELECT scheduled_at FROM publications WHERE id = ?').get(pubScheduled1) as { scheduled_at: string };
-    expect(row.scheduled_at).toBe(newDate);
+    const row = await db.get<{ scheduled_at: string }>('SELECT scheduled_at FROM publications WHERE id = ?', [pubScheduled1]);
+    expect(row?.scheduled_at).toBe(newDate);
   });
 
   // 5. Déprogrammation (scheduled_at = null)

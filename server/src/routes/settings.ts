@@ -17,7 +17,7 @@ export async function settingsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get('/api/settings', async (_request, reply) => {
     try {
       const db = getDatabase();
-      const rows = db.prepare('SELECT key, value FROM settings').all() as Array<{ key: string; value: string }>;
+      const rows = await db.all<{ key: string; value: string }>('SELECT key, value FROM settings');
       
       const settingsMap: Record<string, string> = {};
       for (const row of rows) {
@@ -48,21 +48,19 @@ export async function settingsRoutes(fastify: FastifyInstance): Promise<void> {
       const db = getDatabase();
       const updates = request.body || {};
 
-      const upsertStmt = db.prepare(`
-        INSERT INTO settings (key, value, updated_at) 
-        VALUES (?, ?, datetime('now'))
-        ON CONFLICT(key) DO UPDATE SET 
-          value = excluded.value, 
-          updated_at = excluded.updated_at
-      `);
-
       for (const [key, val] of Object.entries(updates)) {
         if (val !== undefined) {
           // Si le mot de passe est '••••••••', on ne l'écrase pas
           if (key === 'smtp_pass' && val === '••••••••') {
             continue;
           }
-          upsertStmt.run(key, String(val));
+          await db.run(`
+            INSERT INTO settings (key, value, updated_at) 
+            VALUES (?, ?, datetime('now'))
+            ON CONFLICT(key) DO UPDATE SET 
+              value = excluded.value, 
+              updated_at = excluded.updated_at
+          `, [key, String(val)]);
         }
       }
 

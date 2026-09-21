@@ -12,7 +12,7 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
   const originalEnv = { ...process.env };
 
   beforeAll(async () => {
-    initializeDatabase();
+    await initializeDatabase();
     app = Fastify({ logger: false });
     await app.register(notificationsRoutes);
     await app.ready();
@@ -23,7 +23,7 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
     closeDatabase();
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.restoreAllMocks();
     process.env = { ...originalEnv };
     process.env.SMTP_HOST = 'smtp.testserver.local';
@@ -40,42 +40,42 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
       sendMail: sendMailMock
     } as any);
 
-    // Nettoyage SQLite avant chaque test
+    // Nettoyage base avant chaque test
     const db = getDatabase();
-    db.prepare("DELETE FROM notifications WHERE id LIKE 'notif_%' OR id LIKE '%-%'").run();
-    db.prepare("DELETE FROM publication_logs WHERE id LIKE 'log_%' OR id LIKE '%-%'").run();
-    db.prepare("DELETE FROM publications WHERE id LIKE 'pub_%'").run();
-    db.prepare("DELETE FROM videos WHERE id LIKE 'vid_%'").run();
-    db.prepare("DELETE FROM campaigns WHERE id LIKE 'camp_%'").run();
-    db.prepare("DELETE FROM social_accounts WHERE id LIKE 'sa_%'").run();
+    await db.run("DELETE FROM notifications WHERE id LIKE 'notif_%' OR id LIKE '%-%'");
+    await db.run("DELETE FROM publication_logs WHERE id LIKE 'log_%' OR id LIKE '%-%'");
+    await db.run("DELETE FROM publications WHERE id LIKE 'pub_%'");
+    await db.run("DELETE FROM videos WHERE id LIKE 'vid_%'");
+    await db.run("DELETE FROM campaigns WHERE id LIKE 'camp_%'");
+    await db.run("DELETE FROM social_accounts WHERE id LIKE 'sa_%'");
   });
 
   // Helpers pour insérer les données de test
-  function insertTestCampaign(id = 'camp_p9_01', name = 'Campagne Test') {
+  async function insertTestCampaign(id = 'camp_p9_01', name = 'Campagne Test') {
     const db = getDatabase();
-    db.prepare(`
+    await db.run(`
       INSERT OR REPLACE INTO campaigns (id, name, color, status)
       VALUES (?, ?, '#08EB08', 'active')
-    `).run(id, name);
+    `, [id, name]);
   }
 
-  function insertTestVideo(videoId = 'vid_p9_01', campaignId?: string) {
+  async function insertTestVideo(videoId = 'vid_p9_01', campaignId?: string) {
     const db = getDatabase();
-    db.prepare(`
+    await db.run(`
       INSERT OR REPLACE INTO videos (id, filename, original_name, file_path, file_size, mime_type, campaign_id, status)
       VALUES (?, 'clip_p9.mp4', 'clip_p9.mp4', 'uploads/clip_p9.mp4', 1048576, 'video/mp4', ?, 'ready')
-    `).run(videoId, campaignId ?? null);
+    `, [videoId, campaignId ?? null]);
   }
 
-  function insertTestAccount(id = 'sa_p9_01', platform = 'tiktok', username = 'testcreator') {
+  async function insertTestAccount(id = 'sa_p9_01', platform = 'tiktok', username = 'testcreator') {
     const db = getDatabase();
-    db.prepare(`
+    await db.run(`
       INSERT OR REPLACE INTO social_accounts (id, platform, account_id, username, display_name, access_token_encrypted, status)
       VALUES (?, ?, ?, ?, 'Test Creator', 'dummy_enc_token', 'connected')
-    `).run(id, platform, `acc_${id}`, username);
+    `, [id, platform, `acc_${id}`, username]);
   }
 
-  function insertPublication(pub: {
+  async function insertPublication(pub: {
     id: string;
     videoId?: string;
     campaignId?: string | null;
@@ -88,15 +88,15 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
   }) {
     const db = getDatabase();
     const videoId = pub.videoId || `vid_${pub.id}`;
-    insertTestVideo(videoId, pub.campaignId ?? undefined);
+    await insertTestVideo(videoId, pub.campaignId ?? undefined);
 
-    db.prepare(`
+    await db.run(`
       INSERT INTO publications (
         id, video_id, campaign_id, social_account_id, platform, title, status,
         external_url, error_message, created_at, updated_at
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-    `).run(
+    `, [
       pub.id,
       videoId,
       pub.campaignId ?? null,
@@ -106,7 +106,7 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
       pub.status,
       pub.externalUrl ?? null,
       pub.errorMessage ?? null
-    );
+    ]);
   }
 
   // =========================================================================
@@ -172,15 +172,15 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
   // 3. Notification de publication réussie (published)
   // =========================================================================
   describe('3. Notification de publication réussie', () => {
-    beforeEach(() => {
-      insertTestCampaign('camp_boxabl', 'BOXABL Campaign');
-      insertTestAccount('sa_tt_01', 'tiktok', 'boxabl_official');
+    beforeEach(async () => {
+      await insertTestCampaign('camp_boxabl', 'BOXABL Campaign');
+      await insertTestAccount('sa_tt_01', 'tiktok', 'boxabl_official');
     });
 
     it('3.1. Envoie un email formaté avec l URL du post si disponible', async () => {
       const pubId = 'pub_success_01';
       const expectedUrl = 'https://www.tiktok.com/@boxabl_official/video/71234567890';
-      insertPublication({
+      await insertPublication({
         id: pubId,
         campaignId: 'camp_boxabl',
         socialAccountId: 'sa_tt_01',
@@ -203,22 +203,22 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
       expect(mailArgs.text).toContain('@boxabl_official');
       expect(mailArgs.html).toContain(expectedUrl);
 
-      // Vérification de la persistance SQLite
+      // Vérification de la persistance dans la base
       const db = getDatabase();
-      const notif = db.prepare('SELECT * FROM notifications WHERE publication_id = ?').get(pubId) as any;
+      const notif = await db.get<any>('SELECT * FROM notifications WHERE publication_id = ?', [pubId]);
       expect(notif).toBeDefined();
       expect(notif.type).toBe('publication_published');
       expect(notif.status).toBe('sent');
       expect(notif.recipient).toBe('admin@example.com');
 
       // Vérification des logs d'audit
-      const log = db.prepare('SELECT * FROM publication_logs WHERE publication_id = ? AND event = ?').get(pubId, 'email_notification_sent') as any;
+      const log = await db.get<any>('SELECT * FROM publication_logs WHERE publication_id = ? AND event = ?', [pubId, 'email_notification_sent']);
       expect(log).toBeDefined();
     });
 
     it('3.2. Affiche "Non disponible pour le moment" si external_url est NULL', async () => {
       const pubId = 'pub_no_url';
-      insertPublication({
+      await insertPublication({
         id: pubId,
         campaignId: 'camp_boxabl',
         socialAccountId: 'sa_tt_01',
@@ -239,7 +239,7 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
     it('3.3. Ne tente aucun envoi si SMTP n est pas configuré', async () => {
       delete process.env.SMTP_HOST;
       const pubId = 'pub_smtp_off';
-      insertPublication({
+      await insertPublication({
         id: pubId,
         platform: 'youtube',
         title: 'Vidéo sans SMTP',
@@ -256,15 +256,15 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
   // 4. Notification de publication échouée (failed)
   // =========================================================================
   describe('4. Notification de publication échouée', () => {
-    beforeEach(() => {
-      insertTestCampaign('camp_boxabl', 'BOXABL Campaign');
-      insertTestAccount('sa_ig_01', 'instagram', 'boxabl_ig');
+    beforeEach(async () => {
+      await insertTestCampaign('camp_boxabl', 'BOXABL Campaign');
+      await insertTestAccount('sa_ig_01', 'instagram', 'boxabl_ig');
     });
 
     it('4.1. Envoie une alerte avec le motif de l erreur assaini', async () => {
       const pubId = 'pub_failed_01';
       const rawError = 'Error 401 Unauthorized: token Bearer sec_tok_999 is expired';
-      insertPublication({
+      await insertPublication({
         id: pubId,
         campaignId: 'camp_boxabl',
         socialAccountId: 'sa_ig_01',
@@ -284,9 +284,9 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
       expect(mailArgs.text).toContain('Bearer [REDACTED]');
       expect(mailArgs.text).not.toContain('sec_tok_999');
 
-      // Vérification SQLite
+      // Vérification base
       const db = getDatabase();
-      const notif = db.prepare('SELECT * FROM notifications WHERE publication_id = ?').get(pubId) as any;
+      const notif = await db.get<any>('SELECT * FROM notifications WHERE publication_id = ?', [pubId]);
       expect(notif).toBeDefined();
       expect(notif.type).toBe('publication_failed');
       expect(notif.status).toBe('sent');
@@ -297,14 +297,14 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
   // 5. Idempotence & Prévention des doublons
   // =========================================================================
   describe('5. Idempotence des notifications', () => {
-    beforeEach(() => {
-      insertTestCampaign('camp_idemp', 'Campagne Idempotence');
-      insertTestAccount('sa_idemp', 'youtube', 'yt_channel');
+    beforeEach(async () => {
+      await insertTestCampaign('camp_idemp', 'Campagne Idempotence');
+      await insertTestAccount('sa_idemp', 'youtube', 'yt_channel');
     });
 
     it('5.1. N envoie pas de deuxième email si un email de succès est déjà enregistré (status sent)', async () => {
       const pubId = 'pub_idempotent_test';
-      insertPublication({
+      await insertPublication({
         id: pubId,
         campaignId: 'camp_idemp',
         socialAccountId: 'sa_idemp',
@@ -328,7 +328,7 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
 
     it('5.2. N envoie pas de deuxième email si un email d échec a déjà été transmis', async () => {
       const pubId = 'pub_idempotent_failed';
-      insertPublication({
+      await insertPublication({
         id: pubId,
         campaignId: 'camp_idemp',
         socialAccountId: 'sa_idemp',
@@ -353,7 +353,7 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
       sendMailMock.mockRejectedValueOnce(new Error('Connection refused by SMTP server on port 587'));
 
       const pubId = 'pub_smtp_crash_test';
-      insertPublication({
+      await insertPublication({
         id: pubId,
         platform: 'youtube',
         title: 'Vidéo Test Crash',
@@ -364,7 +364,7 @@ describe('PHASE 9 - Notifications Email (SMTP)', () => {
       expect(result).toBe(false);
 
       const db = getDatabase();
-      const notif = db.prepare('SELECT * FROM notifications WHERE publication_id = ?').get(pubId) as any;
+      const notif = await db.get<any>('SELECT * FROM notifications WHERE publication_id = ?', [pubId]);
       expect(notif).toBeDefined();
       expect(notif.status).toBe('failed');
       expect(notif.error).toContain('Connection refused');

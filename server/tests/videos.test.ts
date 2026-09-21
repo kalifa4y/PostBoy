@@ -16,7 +16,7 @@ describe('PHASE 3 - Bibliothèque de Vidéos & Import Multiple', () => {
   const uploadsDir = path.resolve(projectRoot, 'uploads');
 
   beforeAll(async () => {
-    initializeDatabase();
+    await initializeDatabase();
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
@@ -37,12 +37,12 @@ describe('PHASE 3 - Bibliothèque de Vidéos & Import Multiple', () => {
 
     // Nettoyage préalable des vidéos de test
     const db = getDatabase();
-    db.prepare("DELETE FROM videos WHERE original_name LIKE 'test_clip_%'").run();
+    await db.run("DELETE FROM videos WHERE original_name LIKE 'test_clip_%'");
   });
 
   afterAll(async () => {
     const db = getDatabase();
-    db.prepare("DELETE FROM videos WHERE original_name LIKE 'test_clip_%'").run();
+    await db.run("DELETE FROM videos WHERE original_name LIKE 'test_clip_%'");
     await app.close();
     closeDatabase();
   });
@@ -68,10 +68,10 @@ describe('PHASE 3 - Bibliothèque de Vidéos & Import Multiple', () => {
   it('2. POST /api/videos/upload doit importer une vidéo unitaire et enregistrer les métadonnées', async () => {
     // Création d'une campagne de test pour l'association
     const db = getDatabase();
-    db.prepare(`
+    await db.run(`
       INSERT OR REPLACE INTO campaigns (id, name, color)
       VALUES (?, 'P3_CAMPAIGN', '#08EB08')
-    `).run(testCampaignId);
+    `, [testCampaignId]);
 
     const boundary = '----WebKitFormBoundary7MA4YWxkTrZu0gW';
     const fakeVideoContent = Buffer.from('FAKEMP4VIDEOCONTENT_TEST_1234567890');
@@ -225,10 +225,10 @@ describe('PHASE 3 - Bibliothèque de Vidéos & Import Multiple', () => {
   // 8. Protection de suppression si liée à une publication
   it('8. DELETE /api/videos/:id doit refuser la suppression si une publication y est liée', async () => {
     const db = getDatabase();
-    db.prepare(`
+    await db.run(`
       INSERT INTO publications (id, video_id, platform, title, status)
       VALUES ('pub_linked_p3', ?, 'tiktok', 'Clip lié', 'scheduled')
-    `).run(uploadedVideoId);
+    `, [uploadedVideoId]);
 
     const res = await app.inject({
       method: 'DELETE',
@@ -239,7 +239,7 @@ describe('PHASE 3 - Bibliothèque de Vidéos & Import Multiple', () => {
     expect(JSON.parse(res.body).message).toContain('publication(s) lui sont actuellement associées');
 
     // Nettoyage de la publication de test
-    db.prepare("DELETE FROM publications WHERE id = 'pub_linked_p3'").run();
+    await db.run("DELETE FROM publications WHERE id = 'pub_linked_p3'");
   });
 
   // 9. Suppression sécurisée du fichier physique et de la base
@@ -257,9 +257,9 @@ describe('PHASE 3 - Bibliothèque de Vidéos & Import Multiple', () => {
     // Vérifier la suppression physique sur disque
     expect(fs.existsSync(physicalPath)).toBe(false);
 
-    // Vérifier la suppression dans SQLite
+    // Vérifier la suppression dans la base
     const db = getDatabase();
-    const row = db.prepare('SELECT id FROM videos WHERE id = ?').get(uploadedVideoId);
+    const row = await db.get('SELECT id FROM videos WHERE id = ?', [uploadedVideoId]);
     expect(row).toBeUndefined();
   });
 });

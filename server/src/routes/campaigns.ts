@@ -49,9 +49,7 @@ export async function campaignRoutes(fastify: FastifyInstance): Promise<void> {
 
       query += ' ORDER BY updated_at DESC';
 
-      const campaigns = (params.length > 0
-        ? db.prepare(query).all(...params)
-        : db.prepare(query).all()) as unknown as CampaignRow[];
+      const campaigns = await db.all<CampaignRow>(query, params);
 
       return reply.code(200).send({
         status: 'success',
@@ -71,7 +69,7 @@ export async function campaignRoutes(fastify: FastifyInstance): Promise<void> {
       const db = getDatabase();
       const { id } = request.params;
 
-      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(id) as unknown as CampaignRow | undefined;
+      const campaign = await db.get<CampaignRow>('SELECT * FROM campaigns WHERE id = ?', [id]);
 
       if (!campaign) {
         return reply.code(404).send({
@@ -106,7 +104,7 @@ export async function campaignRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       // Vérification de doublon (insensible à la casse)
-      const existing = db.prepare('SELECT id FROM campaigns WHERE LOWER(name) = LOWER(?)').get(name);
+      const existing = await db.get<{ id: string }>('SELECT id FROM campaigns WHERE LOWER(name) = LOWER(?)', [name]);
       if (existing) {
         return reply.code(409).send({
           status: 'error',
@@ -121,12 +119,12 @@ export async function campaignRoutes(fastify: FastifyInstance): Promise<void> {
       const hashtags = body.hashtags ? body.hashtags.trim() : null;
       const status = body.status === 'inactive' ? 'inactive' : 'active';
 
-      db.prepare(`
+      await db.run(`
         INSERT INTO campaigns (id, name, description, color, mentions, hashtags, status, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-      `).run(id, name, description, color, mentions, hashtags, status);
+      `, [id, name, description, color, mentions, hashtags, status]);
 
-      const created = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(id) as unknown as CampaignRow;
+      const created = await db.get<CampaignRow>('SELECT * FROM campaigns WHERE id = ?', [id]);
 
       return reply.code(201).send({
         status: 'success',
@@ -147,7 +145,7 @@ export async function campaignRoutes(fastify: FastifyInstance): Promise<void> {
       const { id } = request.params;
       const body = request.body || {};
 
-      const existing = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(id) as unknown as CampaignRow | undefined;
+      const existing = await db.get<CampaignRow>('SELECT * FROM campaigns WHERE id = ?', [id]);
       if (!existing) {
         return reply.code(404).send({
           status: 'error',
@@ -165,7 +163,7 @@ export async function campaignRoutes(fastify: FastifyInstance): Promise<void> {
             message: 'Le nom de la campagne ne peut pas être vide.'
           });
         }
-        const duplicate = db.prepare('SELECT id FROM campaigns WHERE LOWER(name) = LOWER(?) AND id != ?').get(newName, id);
+        const duplicate = await db.get<{ id: string }>('SELECT id FROM campaigns WHERE LOWER(name) = LOWER(?) AND id != ?', [newName, id]);
         if (duplicate) {
           return reply.code(409).send({
             status: 'error',
@@ -180,13 +178,13 @@ export async function campaignRoutes(fastify: FastifyInstance): Promise<void> {
       const newHashtags = body.hashtags !== undefined ? (body.hashtags ? body.hashtags.trim() : null) : existing.hashtags;
       const newStatus = body.status !== undefined ? (body.status === 'inactive' ? 'inactive' : 'active') : existing.status;
 
-      db.prepare(`
+      await db.run(`
         UPDATE campaigns 
         SET name = ?, description = ?, color = ?, mentions = ?, hashtags = ?, status = ?, updated_at = datetime('now')
         WHERE id = ?
-      `).run(newName, newDescription, newColor, newMentions, newHashtags, newStatus, id);
+      `, [newName, newDescription, newColor, newMentions, newHashtags, newStatus, id]);
 
-      const updated = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(id) as unknown as CampaignRow;
+      const updated = await db.get<CampaignRow>('SELECT * FROM campaigns WHERE id = ?', [id]);
 
       return reply.code(200).send({
         status: 'success',
@@ -206,7 +204,7 @@ export async function campaignRoutes(fastify: FastifyInstance): Promise<void> {
       const db = getDatabase();
       const { id } = request.params;
 
-      const existing = db.prepare('SELECT id, name FROM campaigns WHERE id = ?').get(id) as { id: string; name: string } | undefined;
+      const existing = await db.get<{ id: string; name: string }>('SELECT id, name FROM campaigns WHERE id = ?', [id]);
       if (!existing) {
         return reply.code(404).send({
           status: 'error',
@@ -215,7 +213,7 @@ export async function campaignRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       // Garde-fou essentiel : vérifier si des vidéos sont rattachées à cette campagne
-      const videoCountRow = db.prepare('SELECT COUNT(*) as count FROM videos WHERE campaign_id = ?').get(id) as { count: number };
+      const videoCountRow = await db.get<{ count: number }>('SELECT COUNT(*) as count FROM videos WHERE campaign_id = ?', [id]);
       if (videoCountRow && videoCountRow.count > 0) {
         return reply.code(400).send({
           status: 'error',
@@ -224,7 +222,7 @@ export async function campaignRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       // Suppression effective
-      db.prepare('DELETE FROM campaigns WHERE id = ?').run(id);
+      await db.run('DELETE FROM campaigns WHERE id = ?', [id]);
 
       return reply.code(200).send({
         status: 'success',

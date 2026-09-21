@@ -102,7 +102,7 @@ export class EmailService {
     const db = getDatabase();
 
     // 1. Récupération des détails de la publication
-    const pub = db.prepare(`
+    const pub = await db.get<any>(`
       SELECT 
         p.*,
         c.name as campaign_name,
@@ -112,17 +112,17 @@ export class EmailService {
       LEFT JOIN campaigns c ON p.campaign_id = c.id
       LEFT JOIN social_accounts sa ON p.social_account_id = sa.id
       WHERE p.id = ?
-    `).get(publicationId) as any;
+    `, [publicationId]);
 
     if (!pub) {
       return false;
     }
 
     // 2. Vérification d'idempotence : éviter tout doublon d'email de succès
-    const existing = db.prepare(`
+    const existing = await db.get<{ id: string }>(`
       SELECT id FROM notifications 
       WHERE publication_id = ? AND type = 'publication_published' AND status = 'sent'
-    `).get(publicationId);
+    `, [publicationId]);
 
     if (existing) {
       return true; // Déjà notifié avec succès
@@ -227,27 +227,27 @@ Message généré automatiquement par PostBoy.
         html: htmlContent
       });
 
-      // Enregistrement succès dans SQLite
-      db.prepare(`
+      // Enregistrement succès dans la base
+      await db.run(`
         INSERT INTO notifications (id, publication_id, type, recipient, subject, body, status, sent_at, error, created_at)
         VALUES (?, ?, 'publication_published', ?, ?, ?, 'sent', datetime('now'), NULL, datetime('now'))
-      `).run(notificationId, publicationId, config.notificationEmail, subject, textContent);
+      `, [notificationId, publicationId, config.notificationEmail, subject, textContent]);
 
-      db.prepare(`
+      await db.run(`
         INSERT INTO publication_logs (id, publication_id, event, message, details, created_at)
         VALUES (?, ?, 'email_notification_sent', ?, ?, datetime('now'))
-      `).run(crypto.randomUUID(), publicationId, `Notification email de succès envoyée à ${config.notificationEmail}`, JSON.stringify({ notificationId, recipient: config.notificationEmail }));
+      `, [crypto.randomUUID(), publicationId, `Notification email de succès envoyée à ${config.notificationEmail}`, JSON.stringify({ notificationId, recipient: config.notificationEmail })]);
 
       return true;
     } catch (err: any) {
       console.warn(`[Email] Échec de l'envoi de notification (publicationId=${publicationId}): ${err.message}`);
 
-      // Enregistrement de l'échec dans SQLite
+      // Enregistrement de l'échec dans la base
       try {
-        db.prepare(`
+        await db.run(`
           INSERT INTO notifications (id, publication_id, type, recipient, subject, body, status, sent_at, error, created_at)
           VALUES (?, ?, 'publication_published', ?, ?, ?, 'failed', NULL, ?, datetime('now'))
-        `).run(notificationId, publicationId, config.notificationEmail, subject, textContent, sanitizeErrorMessage(err.message));
+        `, [notificationId, publicationId, config.notificationEmail, subject, textContent, sanitizeErrorMessage(err.message)]);
       } catch (dbErr: any) {
         console.error(`[Email] Erreur enregistrement échec notification: ${dbErr.message}`);
       }
@@ -267,7 +267,7 @@ Message généré automatiquement par PostBoy.
 
     const db = getDatabase();
 
-    const pub = db.prepare(`
+    const pub = await db.get<any>(`
       SELECT 
         p.*,
         c.name as campaign_name,
@@ -277,17 +277,17 @@ Message généré automatiquement par PostBoy.
       LEFT JOIN campaigns c ON p.campaign_id = c.id
       LEFT JOIN social_accounts sa ON p.social_account_id = sa.id
       WHERE p.id = ?
-    `).get(publicationId) as any;
+    `, [publicationId]);
 
     if (!pub) {
       return false;
     }
 
     // Idempotence : ne pas envoyer de doublon pour le même échec
-    const existing = db.prepare(`
+    const existing = await db.get<{ id: string }>(`
       SELECT id FROM notifications 
       WHERE publication_id = ? AND type = 'publication_failed' AND status = 'sent'
-    `).get(publicationId);
+    `, [publicationId]);
 
     if (existing) {
       return true;
@@ -386,26 +386,26 @@ Consultez PostBoy pour corriger et republier manuellement si nécessaire.
         html: htmlContent
       });
 
-      // Enregistrement succès d'envoi dans SQLite
-      db.prepare(`
+      // Enregistrement succès d'envoi dans la base
+      await db.run(`
         INSERT INTO notifications (id, publication_id, type, recipient, subject, body, status, sent_at, error, created_at)
         VALUES (?, ?, 'publication_failed', ?, ?, ?, 'sent', datetime('now'), NULL, datetime('now'))
-      `).run(notificationId, publicationId, config.notificationEmail, subject, textContent);
+      `, [notificationId, publicationId, config.notificationEmail, subject, textContent]);
 
-      db.prepare(`
+      await db.run(`
         INSERT INTO publication_logs (id, publication_id, event, message, details, created_at)
         VALUES (?, ?, 'email_notification_sent', ?, ?, datetime('now'))
-      `).run(crypto.randomUUID(), publicationId, `Notification email d'échec envoyée à ${config.notificationEmail}`, JSON.stringify({ notificationId, recipient: config.notificationEmail }));
+      `, [crypto.randomUUID(), publicationId, `Notification email d'échec envoyée à ${config.notificationEmail}`, JSON.stringify({ notificationId, recipient: config.notificationEmail })]);
 
       return true;
     } catch (err: any) {
       console.warn(`[Email] Échec de l'envoi d'email d'erreur (publicationId=${publicationId}): ${err.message}`);
 
       try {
-        db.prepare(`
+        await db.run(`
           INSERT INTO notifications (id, publication_id, type, recipient, subject, body, status, sent_at, error, created_at)
           VALUES (?, ?, 'publication_failed', ?, ?, ?, 'failed', NULL, ?, datetime('now'))
-        `).run(notificationId, publicationId, config.notificationEmail, subject, textContent, sanitizeErrorMessage(err.message));
+        `, [notificationId, publicationId, config.notificationEmail, subject, textContent, sanitizeErrorMessage(err.message)]);
       } catch (dbErr: any) {
         console.error(`[Email] Erreur enregistrement échec notification: ${dbErr.message}`);
       }

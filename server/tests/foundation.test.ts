@@ -10,7 +10,7 @@ describe('PHASE 0 - Architecture & Fondations', () => {
 
   beforeAll(async () => {
     // Initialisation DB et tables
-    initializeDatabase();
+    await initializeDatabase();
 
     // Montage Fastify pour les tests d'intégration des routes
     app = Fastify({ logger: false });
@@ -25,11 +25,11 @@ describe('PHASE 0 - Architecture & Fondations', () => {
   });
 
   describe('1. Base de données SQLite & Schéma', () => {
-    it('doit contenir toutes les tables métier requises', () => {
+    it('doit contenir toutes les tables métier requises', async () => {
       const db = getDatabase();
-      const tables = db.prepare(
+      const tables = await db.all<{ name: string }>(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
-      ).all() as Array<{ name: string }>;
+      );
 
       const tableNames = tables.map(t => t.name);
       
@@ -42,11 +42,11 @@ describe('PHASE 0 - Architecture & Fondations', () => {
       expect(tableNames).toContain('notifications');
     });
 
-    it('doit avoir initialisé les paramètres par défaut dans settings', () => {
+    it('doit avoir initialisé les paramètres par défaut dans settings', async () => {
       const db = getDatabase();
-      const row = db.prepare("SELECT value FROM settings WHERE key = 'timezone'").get() as { value: string };
+      const row = await db.get<{ value: string }>("SELECT value FROM settings WHERE key = 'timezone'");
       expect(row).toBeDefined();
-      expect(row.value).toBe('Africa/Bamako');
+      expect(row?.value).toBe('Africa/Bamako');
     });
   });
 

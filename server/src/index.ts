@@ -30,8 +30,8 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Initialisation de la base SQLite au démarrage
-initializeDatabase();
+// Initialisation de la base de données (Turso / LibSQL) au démarrage
+await initializeDatabase();
 
 const server = Fastify({
   logger: true

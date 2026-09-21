@@ -5,13 +5,13 @@ export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get('/api/health', async (_request, reply) => {
     try {
       const db = getDatabase();
-      const testQuery = db.prepare('SELECT 1 as alive').get() as { alive: number } | undefined;
+      const testQuery = await db.get<{ alive: number }>('SELECT 1 as alive');
       
-      const tablesResult = db.prepare(
+      const tablesResult = await db.all<{ name: string }>(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
-      ).all() as Array<{ name: string }>;
+      );
       
-      const tzRow = db.prepare("SELECT value FROM settings WHERE key = 'timezone'").get() as { value: string } | undefined;
+      const tzRow = await db.get<{ value: string }>("SELECT value FROM settings WHERE key = 'timezone'");
 
       return reply.code(200).send({
         status: 'ok',
