@@ -1,4 +1,6 @@
-import { createClient, Client, InStatement, InArgs, ResultSet } from '@libsql/client';
+import type { Client, InStatement, InArgs, ResultSet } from '@libsql/client';
+import { createClient as createWebClient } from '@libsql/client/web';
+import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
 import dotenv from 'dotenv';
@@ -67,10 +69,15 @@ export function getDatabase(customUrl?: string, customToken?: string): LibSqlDat
       url = `file:${resolvedDbPath.replace(/\\/g, '/')}`;
     }
 
-    const client = createClient({
-      url,
-      authToken
-    });
+    const isCloud = url.startsWith('libsql://') || url.startsWith('https://') || url.startsWith('http://');
+    let client: Client;
+    if (isCloud) {
+      client = createWebClient({ url, authToken }) as unknown as Client;
+    } else {
+      const require = createRequire(import.meta.url || process.cwd() + '/');
+      const { createClient } = require('@libsql/client');
+      client = createClient({ url, authToken });
+    }
 
     dbInstance = new LibSqlDatabase(client);
   }

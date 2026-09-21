@@ -2,7 +2,12 @@
   "name": "postboy",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Clipping Publisher - Gestion et programmation de clips multi-plateformes",
+  "workspaces": [
+    "client",
+    "server"
+  ],
   "scripts": {
     "dev": "concurrently -n \"SERVER,CLIENT\" -c \"green,cyan\" \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
     "dev:server": "npm --prefix server run dev",
@@ -12,6 +17,7 @@
     "db:init": "npm --prefix server run db:init"
   },
   "devDependencies": {
+    "@types/node": "^22.13.9",
     "concurrently": "^10.0.5"
   }
 }

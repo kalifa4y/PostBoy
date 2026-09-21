@@ -82,3 +82,18 @@ Le script :
 
 Si `TURSO_DATABASE_URL` n'est pas renseignée dans votre `.env`, PostBoy bascule automatiquement et de manière transparente sur la base locale SQLite stockée dans `data/postboy.db` (`file:data/postboy.db`).
 Vous pouvez donc continuer à développer et exécuter les tests localement sans connexion internet si besoin.
+
+---
+
+## 6. État Actuel & Vérification en Production (Phase 7)
+
+Votre base de données Turso est actuellement **active, initialisée et prête pour la production** :
+* **Instance :** `libsql://postboy-db-kalf91y.aws-us-east-1.turso.io`
+* **Tables vérifiées :** `settings`, `campaigns`, `videos`, `publications`, `notifications`.
+* **Schéma :** Toutes les colonnes de publication manuelle (`caption`, `hashtags`, `notes`, `scheduled_at`, `published_at`, `post_url`, etc.) sont présentes.
+
+Pour tester la connectivité à tout moment sans modifier de données :
+```bash
+npm --prefix server run db:init
+```
+

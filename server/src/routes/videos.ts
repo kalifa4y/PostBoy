@@ -37,6 +37,16 @@ const ALLOWED_MIME_TYPES = new Set([
  * Obtient le chemin absolu du dossier uploads par rapport à la racine du projet.
  */
 function getUploadsDir(): string {
+  if (process.env.VERCEL) {
+    const tmpDir = '/tmp/uploads';
+    try {
+      if (!fs.existsSync(tmpDir)) {
+        fs.mkdirSync(tmpDir, { recursive: true });
+      }
+    } catch {}
+    return tmpDir;
+  }
+
   const projectRoot = path.basename(process.cwd()) === 'server'
     ? path.resolve(process.cwd(), '..')
     : process.cwd();
@@ -44,9 +54,11 @@ function getUploadsDir(): string {
   const rawDir = process.env.UPLOADS_DIR || './uploads';
   const uploadsDir = path.isAbsolute(rawDir) ? rawDir : path.resolve(projectRoot, rawDir);
 
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-  }
+  try {
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+  } catch {}
 
   return uploadsDir;
 }

@@ -1,5 +1,17 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "outputDirectory": "client/dist",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
   "crons": [
     {
       "path": "/api/cron/morning",
@@ -7,7 +19,7 @@
     },
     {
       "path": "/api/cron/check-reminders",
-      "schedule": "*/30 * * * *"
+      "schedule": "0 14 * * *"
     },
     {
       "path": "/api/cron/evening",
