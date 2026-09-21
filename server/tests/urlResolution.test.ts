@@ -351,33 +351,62 @@ describe('PHASE 8 - Récupération et Stockage des URLs des Publications', () =>
       insertTestAccount('sa_tt_test', 'tiktok');
     });
 
-    it('6.1. Indique un traitement en cours si TikTok n a pas encore terminé', async () => {
-      const publishId = 'v_pub_processing_123';
+    it('6.1. Indique un traitement en cours si le statut TikTok est PROCESSING_DOWNLOAD, PROCESSING_UPLOAD ou IN_REVIEW', async () => {
+      for (const procStatus of ['PROCESSING_DOWNLOAD', 'PROCESSING_UPLOAD', 'IN_REVIEW']) {
+        const pubId = `pub_tt_proc_${procStatus}`;
+        insertPublication({
+          id: pubId,
+          socialAccountId: 'sa_tt_test',
+          platform: 'tiktok',
+          status: 'published',
+          externalPostId: `v_pub_${procStatus}`,
+          externalUrl: null
+        });
+
+        vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+          if (String(url).includes('status/fetch')) {
+            return new Response(JSON.stringify({
+              data: { status: procStatus }
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          }
+          return new Response('Not Found', { status: 404 });
+        });
+
+        const result = await urlResolverService.resolvePublicationUrl(pubId);
+        expect(result.success).toBe(false);
+        expect(result.externalUrl).toBeNull();
+        expect(result.message).toContain('Vidéo encore en cours de traitement par TikTok');
+        expect(result.message).toContain(procStatus);
+      }
+    });
+
+    it('6.2. Indique un échec si le statut TikTok est FAILED avec fail_reason', async () => {
+      const pubId = 'pub_tt_failed';
       insertPublication({
-        id: 'pub_tt_processing',
+        id: pubId,
         socialAccountId: 'sa_tt_test',
         platform: 'tiktok',
         status: 'published',
-        externalPostId: publishId,
+        externalPostId: 'v_pub_failed',
         externalUrl: null
       });
 
       vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
         if (String(url).includes('status/fetch')) {
           return new Response(JSON.stringify({
-            data: { status: 'PROCESSING_DOWNLOAD' }
+            data: { status: 'FAILED', fail_reason: 'Transcoding error' }
           }), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
         return new Response('Not Found', { status: 404 });
       });
 
-      const result = await urlResolverService.resolvePublicationUrl('pub_tt_processing');
+      const result = await urlResolverService.resolvePublicationUrl(pubId);
       expect(result.success).toBe(false);
       expect(result.externalUrl).toBeNull();
-      expect(result.message).toContain('Vidéo encore en cours de traitement');
+      expect(result.message).toContain('Échec du traitement chez TikTok: Transcoding error');
     });
 
-    it('6.2. Indique un statut non public ou en modération si aucun publicaly_available_post_id', async () => {
+    it('6.3. Indique une absence de post_id public si PUBLISH_COMPLETE mais publicaly_available_post_id est vide ou absent', async () => {
       const publishId = 'v_pub_moderation_123';
       insertPublication({
         id: 'pub_tt_moderation',
@@ -391,7 +420,7 @@ describe('PHASE 8 - Récupération et Stockage des URLs des Publications', () =>
       vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
         if (String(url).includes('status/fetch')) {
           return new Response(JSON.stringify({
-            data: { status: 'SUCCESS', publicaly_available_post_id: [] }
+            data: { status: 'PUBLISH_COMPLETE', publicaly_available_post_id: [] }
           }), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
         return new Response('Not Found', { status: 404 });
@@ -400,10 +429,10 @@ describe('PHASE 8 - Récupération et Stockage des URLs des Publications', () =>
       const result = await urlResolverService.resolvePublicationUrl('pub_tt_moderation');
       expect(result.success).toBe(false);
       expect(result.externalUrl).toBeNull();
-      expect(result.message).toContain('attente de modération');
+      expect(result.message).toContain('publicaly_available_post_id manquant ou post privé');
     });
 
-    it('6.3. Résout avec succès l URL officielle share_url si retournée par Display API', async () => {
+    it('6.4. Résout avec succès l URL officielle share_url via video/query avec PUBLISH_COMPLETE et publicaly_available_post_id', async () => {
       const publishId = 'v_pub_success_123';
       const videoId = '7123456789012345678';
       const expectedShareUrl = `https://www.tiktok.com/@testcreator/video/${videoId}`;
@@ -417,14 +446,16 @@ describe('PHASE 8 - Récupération et Stockage des URLs des Publications', () =>
         externalUrl: null
       });
 
-      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any, options: any) => {
         const urlStr = String(url);
         if (urlStr.includes('status/fetch')) {
           return new Response(JSON.stringify({
-            data: { status: 'SUCCESS', publicaly_available_post_id: [videoId] }
+            data: { status: 'PUBLISH_COMPLETE', publicaly_available_post_id: [videoId] }
           }), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
         if (urlStr.includes('video/query')) {
+          const body = JSON.parse(options?.body || '{}');
+          expect(body.filters.video_ids).toEqual([videoId]);
           return new Response(JSON.stringify({
             data: {
               videos: [
@@ -447,6 +478,63 @@ describe('PHASE 8 - Récupération et Stockage des URLs des Publications', () =>
       const db = getDatabase();
       const pub = db.prepare('SELECT external_url FROM publications WHERE id = ?').get('pub_tt_full_success') as any;
       expect(pub.external_url).toBe(expectedShareUrl);
+    });
+
+    it('6.5. Gère proprement le cas où le scope video.list est manquant (scope_not_authorized ou HTTP 403)', async () => {
+      const publishId = 'v_pub_scope_err_123';
+      const videoId = '7123456789012345678';
+
+      insertPublication({
+        id: 'pub_tt_scope_err',
+        socialAccountId: 'sa_tt_test',
+        platform: 'tiktok',
+        status: 'published',
+        externalPostId: publishId,
+        externalUrl: null
+      });
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+        const urlStr = String(url);
+        if (urlStr.includes('status/fetch')) {
+          return new Response(JSON.stringify({
+            data: { status: 'PUBLISH_COMPLETE', publicaly_available_post_id: [videoId] }
+          }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (urlStr.includes('video/query')) {
+          return new Response(JSON.stringify({
+            error: {
+              code: 'scope_not_authorized',
+              message: 'Scope video.list is required'
+            }
+          }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response('Not Found', { status: 404 });
+      });
+
+      const result = await urlResolverService.resolvePublicationUrl('pub_tt_scope_err');
+      expect(result.success).toBe(false);
+      expect(result.externalUrl).toBeNull();
+      expect(result.message).toContain("Scope 'video.list' manquant");
+    });
+
+    it('6.6. Idempotence TikTok : ne fait aucun appel réseau si external_url est déjà renseignée', async () => {
+      const existingUrl = 'https://www.tiktok.com/@testcreator/video/7123456789012345678';
+      insertPublication({
+        id: 'pub_tt_idempotent',
+        socialAccountId: 'sa_tt_test',
+        platform: 'tiktok',
+        status: 'published',
+        externalPostId: 'v_pub_idempotent',
+        externalUrl: existingUrl
+      });
+
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const result = await urlResolverService.resolvePublicationUrl('pub_tt_idempotent');
+
+      expect(result.success).toBe(true);
+      expect(result.alreadyResolved).toBe(true);
+      expect(result.externalUrl).toBe(existingUrl);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
 

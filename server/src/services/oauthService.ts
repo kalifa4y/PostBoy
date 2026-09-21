@@ -79,7 +79,7 @@ export function generateAuthorizationUrl(platform: SupportedPlatform, state: str
     case 'tiktok': {
       const params = new URLSearchParams({
         client_key: config.clientId,
-        scope: 'user.info.basic',
+        scope: 'user.info.basic,video.publish,video.upload,video.list',
         response_type: 'code',
         redirect_uri: config.redirectUri,
         state

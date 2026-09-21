@@ -233,8 +233,12 @@ export class UrlResolverService {
 
   /**
    * Interroge l'API TikTok pour obtenir le statut et le share_url officiel.
+   * Workflow officiel TikTok API v2 :
    * 1. Interrogation de POST /v2/post/publish/status/fetch/ avec { publish_id }
-   * 2. Si publish complete et publicaly_available_post_id présent, interrogation du Display API /v2/video/query/?fields=id,title,share_url
+   * 2. Statut final officiel : 'PUBLISH_COMPLETE' (rejet des états en cours de traitement).
+   * 3. Récupération du post_id public dans data.publicaly_available_post_id (array ou string).
+   * 4. Interrogation de Display API POST /v2/video/query/?fields=id,title,share_url avec filters: { video_ids: [postId] } (requiert le scope video.list).
+   * 5. Extraction et validation de share_url.
    */
   async resolveTikTokUrl(publishId: string, accessToken: string): Promise<{ url: string | null; message: string }> {
     const cleanId = publishId.trim();
@@ -264,13 +268,6 @@ export class UrlResolverService {
       const pubData = statusData.data || {};
       const status = pubData.status;
 
-      if (status === 'PROCESSING_DOWNLOAD' || status === 'PROCESSING_UPLOAD') {
-        return {
-          url: null,
-          message: '[TikTok] Vidéo encore en cours de traitement par TikTok. Veuillez réessayer dans un instant.'
-        };
-      }
-
       if (status === 'FAILED') {
         return {
           url: null,
@@ -278,17 +275,31 @@ export class UrlResolverService {
         };
       }
 
+      // Si le statut n'est pas encore PUBLISH_COMPLETE (ex: PROCESSING_DOWNLOAD, PROCESSING_UPLOAD, IN_REVIEW...)
+      if (status !== 'PUBLISH_COMPLETE') {
+        return {
+          url: null,
+          message: `[TikTok] Vidéo encore en cours de traitement par TikTok (statut: ${status || 'inconnu'}). Veuillez réessayer dans un instant.`
+        };
+      }
+
+      // 2. Récupération du post_id public
       const availablePostIds = pubData.publicaly_available_post_id;
-      const videoId = Array.isArray(availablePostIds) && availablePostIds.length > 0 ? String(availablePostIds[0]) : null;
+      let videoId: string | null = null;
+      if (Array.isArray(availablePostIds) && availablePostIds.length > 0) {
+        videoId = String(availablePostIds[0]).trim();
+      } else if (typeof availablePostIds === 'string' && availablePostIds.trim() !== '') {
+        videoId = availablePostIds.trim();
+      }
 
       if (!videoId) {
         return {
           url: null,
-          message: '[TikTok] Le post n\'est pas encore publiquement disponible ou est en attente de modération (aucun publicaly_available_post_id).'
+          message: '[TikTok] Publication terminée, mais aucun identifiant public disponible (publicaly_available_post_id manquant ou post privé).'
         };
       }
 
-      // 2. Récupération de l'URL officielle (share_url) via l'endpoint officiel Display API
+      // 3. Récupération de l'URL officielle (share_url) via l'endpoint officiel Display API
       const videoQueryUrl = 'https://open.tiktokapis.com/v2/video/query/?fields=id,title,share_url';
       const videoRes = await fetch(videoQueryUrl, {
         method: 'POST',
@@ -304,22 +315,49 @@ export class UrlResolverService {
         signal: AbortSignal.timeout(15000)
       });
 
-      if (videoRes.ok) {
-        const videoData = await videoRes.json() as any;
-        const videos = videoData.data?.videos;
-        if (Array.isArray(videos) && videos.length > 0 && videos[0].share_url && isValidHttpUrl(videos[0].share_url)) {
+      if (!videoRes.ok) {
+        const errText = await videoRes.text();
+        if (
+          videoRes.status === 401 ||
+          videoRes.status === 403 ||
+          errText.includes('scope_not_authorized') ||
+          errText.includes('scope')
+        ) {
           return {
-            url: videos[0].share_url,
-            message: 'URL officielle TikTok (share_url) récupérée avec succès.'
+            url: null,
+            message: "[TikTok] Scope 'video.list' manquant ou non autorisé pour récupérer l'URL publique de partage. Veuillez reconnecter le compte."
           };
         }
+        return {
+          url: null,
+          message: `[TikTok] Échec de récupération des détails vidéo (HTTP ${videoRes.status}): ${errText}`
+        };
       }
 
-      // Si le scope video.list n'est pas activé ou si share_url n'est pas retourné :
-      // Conformément à la Règle 3 & 9, on n'invente PAS l'URL
+      const videoData = await videoRes.json() as any;
+
+      if (
+        videoData.error?.code === 'scope_not_authorized' ||
+        (typeof videoData.error?.message === 'string' && videoData.error.message.includes('scope'))
+      ) {
+        return {
+          url: null,
+          message: "[TikTok] Scope 'video.list' manquant ou non autorisé pour récupérer l'URL publique de partage. Veuillez reconnecter le compte."
+        };
+      }
+
+      const videos = videoData.data?.videos;
+      if (Array.isArray(videos) && videos.length > 0 && videos[0].share_url && isValidHttpUrl(videos[0].share_url)) {
+        return {
+          url: videos[0].share_url,
+          message: 'URL officielle TikTok (share_url) récupérée avec succès.'
+        };
+      }
+
+      // Si share_url n'est pas fourni dans la réponse
       return {
         url: null,
-        message: `[TikTok] Post identifié (${videoId}), mais l'URL publique n'a pas pu être extraite officiellement via l'API.`
+        message: `[TikTok] Post identifié (${videoId}), mais l'URL publique (share_url) n'a pas été fournie par l'API.`
       };
     } catch (err: any) {
       return {
