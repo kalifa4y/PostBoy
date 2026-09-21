@@ -1,8 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import crypto from 'node:crypto';
 import { getDatabase } from '../db/connection.js';
-import { publicationService } from '../services/publicationService.js';
-import { urlResolverService } from '../services/urlResolverService.js';
 
 export const ALLOWED_PLATFORMS = ['tiktok', 'instagram', 'youtube'] as const;
 export type AllowedPlatform = typeof ALLOWED_PLATFORMS[number];
@@ -685,120 +683,6 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Erreur lors de la mise à jour de la publication';
-      fastify.log.error(error);
-      return reply.code(500).send({ status: 'error', message });
-    }
-  });
-
-  // POST /api/publications/:id/publish - Déclenchement manuel de la publication
-  fastify.post<{ Params: { id: string } }>('/api/publications/:id/publish', async (request, reply) => {
-    try {
-      const { id } = request.params;
-      const db = getDatabase();
-
-      const publication = db.prepare('SELECT id, status, published_at FROM publications WHERE id = ?').get(id) as unknown as PublicationRow | undefined;
-      if (!publication) {
-        return reply.code(404).send({
-          status: 'error',
-          message: `Publication introuvable avec l'identifiant ${id}`
-        });
-      }
-
-      if (publication.status === 'published') {
-        return reply.code(400).send({
-          status: 'error',
-          message: `Cette publication a déjà été publiée avec succès le ${publication.published_at}`
-        });
-      }
-
-      if (publication.status === 'cancelled') {
-        return reply.code(400).send({
-          status: 'error',
-          message: 'Impossible de publier une publication annulée.'
-        });
-      }
-
-      if (publication.status === 'publishing') {
-        return reply.code(409).send({
-          status: 'error',
-          message: "Cette publication est déjà en cours d'envoi."
-        });
-      }
-
-      // Déclenchement via le moteur PublicationService
-      const result = await publicationService.publishPublication(id, { forceManual: true });
-
-      const updated = getPublicationWithDetails(id);
-
-      if (result.success) {
-        return reply.code(200).send({
-          status: 'success',
-          message: 'Publication effectuée avec succès !',
-          publication: updated,
-          result
-        });
-      } else {
-        return reply.code(400).send({
-          status: 'error',
-          message: result.errorMessage || "Échec lors de l'envoi de la publication",
-          publication: updated
-        });
-      }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Erreur lors de la publication';
-      fastify.log.error(error);
-      return reply.code(500).send({ status: 'error', message });
-    }
-  });
-
-  // POST /api/publications/:id/resolve-url - Résolution de l'URL publique officielle (Phase 8)
-  fastify.post<{ Params: { id: string } }>('/api/publications/:id/resolve-url', async (request, reply) => {
-    try {
-      const { id } = request.params;
-      const db = getDatabase();
-
-      const publication = db.prepare('SELECT id, status, external_post_id, external_url FROM publications WHERE id = ?').get(id) as unknown as PublicationRow | undefined;
-      if (!publication) {
-        return reply.code(404).send({
-          status: 'error',
-          message: `Publication introuvable avec l'identifiant ${id}`
-        });
-      }
-
-      if (publication.status !== 'published') {
-        return reply.code(400).send({
-          status: 'error',
-          message: `Impossible de résoudre l'URL : la publication est en statut '${publication.status}' (seul le statut 'published' est éligible).`
-        });
-      }
-
-      if (!publication.external_post_id) {
-        return reply.code(400).send({
-          status: 'error',
-          message: "Aucun identifiant de publication externe (external_post_id) n'est enregistré pour cette publication."
-        });
-      }
-
-      const result = await urlResolverService.resolvePublicationUrl(id);
-      const updated = getPublicationWithDetails(id);
-
-      if (result.success) {
-        return reply.code(200).send({
-          status: 'success',
-          message: result.message,
-          external_url: result.externalUrl,
-          already_resolved: result.alreadyResolved || false,
-          publication: updated
-        });
-      } else {
-        return reply.code(400).send({
-          status: 'error',
-          message: result.message,
-          publication: updated
-        });
-      }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Erreur lors de la résolution de l'URL";
       fastify.log.error(error);
       return reply.code(500).send({ status: 'error', message });
     }

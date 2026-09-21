@@ -45,3 +45,6 @@ Desktop.ini
 *.njsproj
 *.sln
 *.sw?
+
+# Tool & agent artifacts
+.playwright-mcp/

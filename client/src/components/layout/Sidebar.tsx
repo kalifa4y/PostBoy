@@ -5,13 +5,11 @@ import {
   Film,
   Send,
   Calendar,
-  Share2,
   Settings,
-  HardDrive,
-  Layers3
+  HardDrive
 } from 'lucide-react';
 
-export type NavTab = 'dashboard' | 'campaigns' | 'videos' | 'publications' | 'calendar' | 'accounts' | 'settings' | 'foundation';
+export type NavTab = 'dashboard' | 'campaigns' | 'videos' | 'publications' | 'calendar' | 'settings';
 
 interface SidebarProps {
   activeTab: NavTab;
@@ -25,12 +23,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       label: 'Dashboard',
       icon: LayoutDashboard,
       badge: 'Actif'
-    },
-    {
-      id: 'foundation' as NavTab,
-      label: 'Fondations & Système',
-      icon: Layers3,
-      badge: 'Phase 0'
     },
     {
       id: 'campaigns' as NavTab,
@@ -54,12 +46,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       id: 'calendar' as NavTab,
       label: 'Calendrier',
       icon: Calendar,
-      badge: 'Actif'
-    },
-    {
-      id: 'accounts' as NavTab,
-      label: 'Comptes Sociaux',
-      icon: Share2,
       badge: 'Actif'
     },
     {

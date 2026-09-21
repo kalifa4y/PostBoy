@@ -14,10 +14,11 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { Publication, Campaign, SocialPlatform, PublicationStatus } from '../types/domain';
+import { NavTab } from '../components/layout/Sidebar';
 
 interface CalendarViewProps {
   activeTimezone: string;
-  onNavigateToTab?: (tab: 'dashboard' | 'campaigns' | 'videos' | 'publications' | 'calendar' | 'accounts' | 'settings' | 'foundation') => void;
+  onNavigateToTab?: (tab: NavTab) => void;
 }
 
 // Composants SVG natifs pour plateformes (Zéro Emoji)

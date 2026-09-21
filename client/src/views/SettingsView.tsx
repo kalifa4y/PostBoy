@@ -5,7 +5,6 @@ import {
   Mail,
   Check,
   AlertCircle,
-  Clock,
   Send,
   Loader2,
   ShieldCheck
@@ -212,42 +211,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSettingsUpdated })
                 className="w-full px-3 py-2 bg-ows-surface2 border border-ows-border rounded-lg text-xs text-ows-textMain focus:outline-none focus:border-ows-accent font-mono"
               />
             </div>
-          </div>
-        </div>
-
-        {/* Section Automatisation */}
-        <div className="bg-ows-surface1 border border-ows-border rounded-xl p-6 space-y-4">
-          <div className="flex items-center space-x-2 text-ows-textMain">
-            <Clock className="w-4 h-4 text-ows-accent" />
-            <h3 className="font-heading font-semibold text-sm">Moteur d'Automatisation</h3>
-          </div>
-          <div className="flex items-center justify-between p-4 rounded-lg bg-ows-surface2 border border-ows-border">
-            <div>
-              <div className="text-xs font-medium text-ows-textMain">
-                Publication automatique activée
-              </div>
-              <div className="text-[11px] text-ows-textSubtle mt-0.5">
-                Le scheduler vérifiera les publications programmées au fil du temps.
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                setSettings({
-                  ...settings,
-                  auto_publish_enabled: settings.auto_publish_enabled === '1' ? '0' : '1'
-                })
-              }
-              className={`w-11 h-6 rounded-full transition-colors relative ${
-                settings.auto_publish_enabled === '1' ? 'bg-ows-accent' : 'bg-ows-surfaceCard border border-ows-border'
-              }`}
-            >
-              <span
-                className={`block w-4 h-4 rounded-full bg-black transition-transform absolute top-1 ${
-                  settings.auto_publish_enabled === '1' ? 'right-1' : 'left-1'
-                }`}
-              />
-            </button>
           </div>
         </div>
 

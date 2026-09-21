@@ -15,10 +15,9 @@ import {
   Film,
   Layers,
   AlertTriangle,
-  RotateCcw,
-  Link2
+  RotateCcw
 } from 'lucide-react';
-import { Publication, Video, Campaign, SocialPlatform, PublicationStatus, SocialAccount } from '../types/domain';
+import { Publication, Video, Campaign, SocialPlatform, PublicationStatus } from '../types/domain';
 
 interface PublicationsViewProps {
   activeTimezone: string;
@@ -70,9 +69,6 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
   const [publications, setPublications] = useState<Publication[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [socialAccounts, setSocialAccounts] = useState<SocialAccount[]>([]);
-  const [publishingId, setPublishingId] = useState<string | null>(null);
-  const [resolvingUrlId, setResolvingUrlId] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -143,10 +139,9 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
 
   const fetchAuxiliaryData = useCallback(async () => {
     try {
-      const [vRes, cRes, sRes] = await Promise.all([
+      const [vRes, cRes] = await Promise.all([
         fetch('/api/videos'),
-        fetch('/api/campaigns'),
-        fetch('/api/social-accounts')
+        fetch('/api/campaigns')
       ]);
       if (vRes.ok) {
         const vData = await vRes.json();
@@ -155,10 +150,6 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
       if (cRes.ok) {
         const cData = await cRes.json();
         if (cData.status === 'success') setCampaigns(cData.campaigns || []);
-      }
-      if (sRes.ok) {
-        const sData = await sRes.json();
-        if (sData.success) setSocialAccounts(sData.accounts || []);
       }
     } catch (err) {
       console.error('Erreur chargement données auxiliaires:', err);
@@ -424,66 +415,6 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
       setFormError(msg);
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  // Déclenchement manuel de publication immédiate (Phase 7)
-  const handlePublishNow = async (pub: Publication) => {
-    try {
-      setPublishingId(pub.id);
-      setActionFeedback(null);
-
-      const res = await fetch(`/api/publications/${pub.id}/publish`, {
-        method: 'POST'
-      });
-
-      const data = await res.json();
-      if (!res.ok || data.status !== 'success') {
-        throw new Error(data.message || 'Échec de la publication');
-      }
-
-      setActionFeedback({
-        type: 'success',
-        message: `Publication réussie sur ${pub.platform.toUpperCase()} ! Identifiant externe : ${data.publication?.external_post_id || 'validé'}`
-      });
-
-      await fetchPublications();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erreur de publication';
-      setActionFeedback({ type: 'error', message: msg });
-      await fetchPublications();
-    } finally {
-      setPublishingId(null);
-    }
-  };
-
-  // Résolution manuelle de l'URL publique officielle (Phase 8)
-  const handleResolveUrl = async (pub: Publication) => {
-    try {
-      setResolvingUrlId(pub.id);
-      setActionFeedback(null);
-
-      const res = await fetch(`/api/publications/${pub.id}/resolve-url`, {
-        method: 'POST'
-      });
-
-      const data = await res.json();
-      if (!res.ok || data.status !== 'success') {
-        throw new Error(data.message || "Impossible de récupérer l'URL pour le moment.");
-      }
-
-      setActionFeedback({
-        type: 'success',
-        message: data.message || `URL officielle résolue avec succès : ${data.external_url}`
-      });
-
-      await fetchPublications();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erreur lors de la résolution de l'URL";
-      setActionFeedback({ type: 'error', message: msg });
-      await fetchPublications();
-    } finally {
-      setResolvingUrlId(null);
     }
   };
 
@@ -839,38 +770,6 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                     {/* Actions */}
                     <td className="py-3.5 px-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">
-                        {/* Action Publier maintenant (Phase 7) */}
-                        {(pub.status === 'scheduled' || pub.status === 'draft' || pub.status === 'failed') && (
-                          <button
-                            onClick={() => handlePublishNow(pub)}
-                            disabled={publishingId === pub.id}
-                            className="p-1.5 text-ows-accent hover:text-ows-accent-hover hover:bg-ows-accent/10 rounded transition-colors disabled:opacity-50"
-                            title="Publier maintenant via API officielle"
-                          >
-                            {publishingId === pub.id ? (
-                              <RotateCcw className="w-4 h-4 animate-spin text-amber-400" />
-                            ) : (
-                              <Send className="w-4 h-4" />
-                            )}
-                          </button>
-                        )}
-
-                        {/* Action Récupérer l'URL (Phase 8) si publiée mais sans external_url */}
-                        {pub.status === 'published' && !pub.external_url && (
-                          <button
-                            onClick={() => handleResolveUrl(pub)}
-                            disabled={resolvingUrlId === pub.id}
-                            className="p-1.5 text-ows-accent hover:text-ows-accent-hover hover:bg-ows-accent/10 rounded transition-colors disabled:opacity-50"
-                            title="Récupérer l'URL officielle (API)"
-                          >
-                            {resolvingUrlId === pub.id ? (
-                              <RotateCcw className="w-4 h-4 animate-spin text-amber-400" />
-                            ) : (
-                              <Link2 className="w-4 h-4" />
-                            )}
-                          </button>
-                        )}
-
                         {pub.external_url && (
                           <a
                             href={pub.external_url}
@@ -1038,38 +937,6 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
-
-              {/* Compte Social Connecté (en mode unitaire) */}
-              {createMode === 'single' && (
-                <div>
-                  <label className="block text-xs font-medium text-ows-text-muted mb-1.5">
-                    Compte social pour la publication ({formPlatform})
-                  </label>
-                  {socialAccounts.filter(a => a.platform === formPlatform).length === 0 ? (
-                    <div className="p-3 bg-black border border-amber-500/30 rounded-lg text-xs text-amber-400/90 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                      <span>
-                        Aucun compte {formPlatform} connecté. Vous pouvez en connecter un dans l&apos;onglet Comptes Réseaux.
-                      </span>
-                    </div>
-                  ) : (
-                    <select
-                      value={formSocialAccountId}
-                      onChange={(e) => setFormSocialAccountId(e.target.value)}
-                      className="w-full bg-black border border-ows-border rounded-lg px-3.5 py-2.5 text-sm text-ows-text-main focus:outline-none focus:border-ows-accent"
-                    >
-                      <option value="">Sélectionner un compte (optionnel)</option>
-                      {socialAccounts
-                        .filter(a => a.platform === formPlatform)
-                        .map(acc => (
-                          <option key={acc.id} value={acc.id}>
-                            @{acc.username} {acc.display_name ? `(${acc.display_name})` : ''} [{acc.status}]
-                          </option>
-                        ))}
-                    </select>
-                  )}
                 </div>
               )}
 
@@ -1245,34 +1112,6 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                     <option value="cancelled">Annulée</option>
                   </select>
                 </div>
-              </div>
-
-              {/* Compte Social Connecté */}
-              <div>
-                <label className="block text-xs font-medium text-ows-text-muted mb-1.5">
-                  Compte social connecté ({editPlatform})
-                </label>
-                {socialAccounts.filter(a => a.platform === editPlatform).length === 0 ? (
-                  <div className="p-2.5 bg-black border border-amber-500/30 rounded-lg text-xs text-amber-400/90 flex items-center gap-2">
-                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span>Aucun compte {editPlatform} connecté.</span>
-                  </div>
-                ) : (
-                  <select
-                    value={editSocialAccountId}
-                    onChange={(e) => setEditSocialAccountId(e.target.value)}
-                    className="w-full bg-black border border-ows-border rounded-lg px-3 py-2 text-sm text-ows-text-main focus:outline-none focus:border-ows-accent"
-                  >
-                    <option value="">Aucun compte assigné</option>
-                    {socialAccounts
-                      .filter(a => a.platform === editPlatform)
-                      .map(acc => (
-                        <option key={acc.id} value={acc.id}>
-                          @{acc.username} {acc.display_name ? `(${acc.display_name})` : ''} [{acc.status}]
-                        </option>
-                      ))}
-                  </select>
-                )}
               </div>
 
               {/* Caption */}

@@ -6,9 +6,7 @@ import { CampaignsView } from './views/CampaignsView';
 import { VideosView } from './views/VideosView';
 import { PublicationsView } from './views/PublicationsView';
 import { CalendarView } from './views/CalendarView';
-import { FoundationView } from './views/FoundationView';
 import { SettingsView } from './views/SettingsView';
-import { AccountsView } from './views/AccountsView';
 import { HealthStatus } from './types/domain';
 
 export const App: React.FC = () => {
@@ -16,13 +14,13 @@ export const App: React.FC = () => {
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [loadingHealth, setLoadingHealth] = useState<boolean>(true);
 
-  // Détection du paramètre d'onglet dans l'URL (ex: retour OAuth ?tab=accounts)
+  // Détection du paramètre d'onglet dans l'URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab') as NavTab | null;
     if (
       tabParam &&
-      ['dashboard', 'campaigns', 'videos', 'publications', 'calendar', 'accounts', 'settings', 'foundation'].includes(tabParam)
+      ['dashboard', 'campaigns', 'videos', 'publications', 'calendar', 'settings'].includes(tabParam)
     ) {
       setActiveTab(tabParam);
     }
@@ -56,8 +54,6 @@ export const App: React.FC = () => {
   // Titres des vues
   const getTabTitle = (tab: NavTab): string => {
     switch (tab) {
-      case 'foundation':
-        return 'Phase 0 — Architecture & Fondations';
       case 'dashboard':
         return 'Dashboard & Statistiques';
       case 'campaigns':
@@ -68,8 +64,6 @@ export const App: React.FC = () => {
         return 'Gestion des Publications';
       case 'calendar':
         return 'Calendrier & Programmation';
-      case 'accounts':
-        return 'Comptes Réseaux Sociaux';
       case 'settings':
         return 'Configuration Système';
       default:
@@ -94,10 +88,6 @@ export const App: React.FC = () => {
 
         {/* Contenu principal défilable */}
         <main className="flex-1 overflow-y-auto p-8">
-          {activeTab === 'foundation' && (
-            <FoundationView health={health} onNavigateToTab={setActiveTab} />
-          )}
-
           {activeTab === 'settings' && (
             <SettingsView onSettingsUpdated={fetchHealth} />
           )}
@@ -126,10 +116,6 @@ export const App: React.FC = () => {
               activeTimezone={health?.activeTimezone || 'Africa/Bamako'}
               onNavigateToTab={setActiveTab}
             />
-          )}
-
-          {activeTab === 'accounts' && (
-            <AccountsView activeTimezone={health?.activeTimezone || 'Africa/Bamako'} />
           )}
         </main>
       </div>

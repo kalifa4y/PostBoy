@@ -2,7 +2,6 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Fastify, { FastifyInstance } from 'fastify';
 import { getDatabase, closeDatabase } from '../src/db/connection.js';
 import { initializeDatabase } from '../src/db/init.js';
-import { encryptData, decryptData } from '../src/utils/crypto.js';
 import { healthRoutes } from '../src/routes/health.js';
 import { settingsRoutes } from '../src/routes/settings.js';
 
@@ -51,30 +50,7 @@ describe('PHASE 0 - Architecture & Fondations', () => {
     });
   });
 
-  describe('2. Chiffrement AES-256-GCM (Sécurité des tokens)', () => {
-    it('doit chiffrer et déchiffrer avec intégrité', () => {
-      const sensitiveToken = 'oauth_token_xyz_super_secret_123456789';
-      const encrypted = encryptData(sensitiveToken);
-
-      expect(encrypted).not.toBe(sensitiveToken);
-      expect(encrypted).toContain(':'); // format iv:authTag:ciphertext
-
-      const decrypted = decryptData(encrypted);
-      expect(decrypted).toBe(sensitiveToken);
-    });
-
-    it('doit rejeter les données altérées', () => {
-      const sensitiveToken = 'secret_token';
-      const encrypted = encryptData(sensitiveToken);
-      const parts = encrypted.split(':');
-      
-      // Altération du ciphertext
-      const tampered = `${parts[0]}:${parts[1]}:deadbeef`;
-      expect(() => decryptData(tampered)).toThrow();
-    });
-  });
-
-  describe('3. Routes de Fondation API', () => {
+  describe('2. Routes de Fondation API', () => {
     it('GET /api/health doit renvoyer un statut ok et la base connectée', async () => {
       const response = await app.inject({
         method: 'GET',
