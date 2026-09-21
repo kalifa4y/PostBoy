@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { getDatabase } from './connection.js';
 
@@ -111,7 +112,42 @@ export function initializeDatabase(): void {
     }
   }
 
+  // Récupération sécurisée des publications interrompues lors du dernier cycle
+  recoverInterruptedPublications();
+
   console.log('[Database] Schéma initialisé et paramètres par défaut vérifiés avec succès.');
+}
+
+/**
+ * Récupère les publications restées en statut 'publishing' lors d'un arrêt impromptu du serveur.
+ * Les bascule en 'failed' de manière sécurisée pour éviter les blocages permanents ou doubles publications.
+ */
+export function recoverInterruptedPublications(): number {
+  const db = getDatabase();
+  const interrupted = db.prepare(`
+    SELECT id FROM publications WHERE status = 'publishing'
+  `).all() as Array<{ id: string }>;
+
+  if (interrupted.length === 0) return 0;
+
+  console.log(`[Database] Récupération de ${interrupted.length} publication(s) interrompue(s) lors du dernier arrêt du serveur.`);
+
+  for (const pub of interrupted) {
+    db.prepare(`
+      UPDATE publications
+      SET status = 'failed',
+          error_message = 'Interrompu lors du redémarrage du serveur (statut réinitialisé en failed pour sécurité)',
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(pub.id);
+
+    db.prepare(`
+      INSERT INTO publication_logs (id, publication_id, event, message, details, created_at)
+      VALUES (?, ?, 'server_restart_recovery', 'Publication interrompue par l arrêt du serveur réinitialisée en failed', NULL, datetime('now'))
+    `).run(crypto.randomUUID(), pub.id);
+  }
+
+  return interrupted.length;
 }
 
 // Exécution directe si appelé via `npm run db:init`

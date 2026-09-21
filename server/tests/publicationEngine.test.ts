@@ -32,6 +32,7 @@ describe('PHASE 7 - Moteur de Publication Automatique', () => {
     db.prepare("DELETE FROM publications WHERE id LIKE 'test_pub_engine_%'").run();
     db.prepare("DELETE FROM videos WHERE id LIKE 'test_vid_engine_%'").run();
     db.prepare("DELETE FROM social_accounts WHERE id LIKE 'test_sa_engine_%'").run();
+    db.prepare("UPDATE settings SET value = '1' WHERE key = 'auto_publish_enabled'").run();
   });
 
   afterAll(async () => {

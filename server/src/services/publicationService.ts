@@ -8,6 +8,7 @@ import { TikTokPublisher } from './publishers/tiktokPublisher.js';
 import { InstagramPublisher } from './publishers/instagramPublisher.js';
 import { YouTubePublisher } from './publishers/youtubePublisher.js';
 import { emailService } from './emailService.js';
+import { urlResolverService } from './urlResolverService.js';
 
 export function getUploadsDir(): string {
   const projectRoot = path.basename(process.cwd()) === 'server'
@@ -246,7 +247,14 @@ export class PublicationService {
 
         console.log(`[Publication] Succès pour la publication ${publicationId} sur ${pubDetails.platform}`);
 
-        // Déclenchement de la notification email (non bloquante & décorrélée)
+        // Tentative automatique de récupération de l'URL publique officielle (Phase 8 & 10)
+        try {
+          await urlResolverService.resolvePublicationUrl(publicationId);
+        } catch (urlErr: any) {
+          console.warn(`[Publication] Échec de la résolution automatique d'URL pour ${publicationId}: ${urlErr.message}`);
+        }
+
+        // Déclenchement de la notification email (non bloquante & décorrélée, avec l'URL résolue)
         emailService.notifyPublicationPublished(publicationId).catch((err) => {
           console.warn(`[Publication] Erreur notification email succès: ${err.message}`);
         });

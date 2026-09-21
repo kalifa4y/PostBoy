@@ -21,6 +21,12 @@ export async function pollAndPublishDuePublications(concurrencyLimit?: number): 
     isPolling = true;
     const db = getDatabase();
 
+    // Vérification du paramètre utilisateur d'activation de la publication automatique
+    const autoPublishSetting = db.prepare("SELECT value FROM settings WHERE key = 'auto_publish_enabled'").get() as any;
+    if (autoPublishSetting && autoPublishSetting.value === '0') {
+      return 0;
+    }
+
     // Recherche des publications programmées échues
     const duePublications = db.prepare(`
       SELECT id FROM publications
