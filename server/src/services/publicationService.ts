@@ -7,6 +7,7 @@ import { PlatformPublisher, PublishContext, PublishResult } from './publishers/t
 import { TikTokPublisher } from './publishers/tiktokPublisher.js';
 import { InstagramPublisher } from './publishers/instagramPublisher.js';
 import { YouTubePublisher } from './publishers/youtubePublisher.js';
+import { emailService } from './emailService.js';
 
 export function getUploadsDir(): string {
   const projectRoot = path.basename(process.cwd()) === 'server'
@@ -244,6 +245,12 @@ export class PublicationService {
         );
 
         console.log(`[Publication] Succès pour la publication ${publicationId} sur ${pubDetails.platform}`);
+
+        // Déclenchement de la notification email (non bloquante & décorrélée)
+        emailService.notifyPublicationPublished(publicationId).catch((err) => {
+          console.warn(`[Publication] Erreur notification email succès: ${err.message}`);
+        });
+
         return result;
       } else {
         return this.failPublication(publicationId, result.errorMessage || 'Échec de publication inconnu');
@@ -273,6 +280,12 @@ export class PublicationService {
     `).run(logId, publicationId, errorMessage);
 
     console.warn(`[Publication] Échec pour la publication ${publicationId}: ${errorMessage}`);
+
+    // Déclenchement de la notification email d'échec (non bloquante & décorrélée)
+    emailService.notifyPublicationFailed(publicationId, errorMessage).catch((err) => {
+      console.warn(`[Publication] Erreur notification email échec: ${err.message}`);
+    });
+
     return { success: false, errorMessage };
   }
 }

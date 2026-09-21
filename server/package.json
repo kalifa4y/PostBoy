@@ -15,10 +15,12 @@
     "@fastify/multipart": "^10.1.1",
     "@fastify/static": "^10.1.4",
     "dotenv": "^16.4.7",
-    "fastify": "^5.2.1"
+    "fastify": "^5.2.1",
+    "nodemailer": "^10.0.10"
   },
   "devDependencies": {
     "@types/node": "^22.13.9",
+    "@types/nodemailer": "^8.0.2",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3",
     "vitest": "^3.0.7"

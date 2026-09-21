@@ -5,12 +5,24 @@ import {
   Mail,
   Check,
   AlertCircle,
-  Clock
+  Clock,
+  Send,
+  Loader2,
+  ShieldCheck
 } from 'lucide-react';
 import { AppSettings } from '../types/domain';
 
 interface SettingsViewProps {
   onSettingsUpdated: () => void;
+}
+
+interface SmtpStatus {
+  configured: boolean;
+  host: string | null;
+  port?: number;
+  secure?: boolean;
+  from?: string;
+  recipient: string | null;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ onSettingsUpdated }) => {
@@ -29,6 +41,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSettingsUpdated })
   const [saving, setSaving] = useState<boolean>(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const [smtpStatus, setSmtpStatus] = useState<SmtpStatus | null>(null);
+  const [testingEmail, setTestingEmail] = useState<boolean>(false);
+  const [testResult, setTestResult] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   // Fuseaux horaires préconfigurés utiles
   const timezones = [
     { value: 'Africa/Bamako', label: 'Africa/Bamako (UTC+0 — Mali)' },
@@ -42,7 +58,49 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSettingsUpdated })
 
   useEffect(() => {
     fetchSettings();
+    fetchSmtpStatus();
   }, []);
+
+  const fetchSmtpStatus = async () => {
+    try {
+      const res = await fetch('/api/notifications/status');
+      const data = await res.json();
+      if (data.status === 'success') {
+        setSmtpStatus({
+          configured: data.configured,
+          host: data.host,
+          port: data.port,
+          secure: data.secure,
+          from: data.from,
+          recipient: data.recipient
+        });
+      }
+    } catch (err) {
+      console.error('Erreur chargement statut SMTP:', err);
+    }
+  };
+
+  const handleTestEmail = async () => {
+    try {
+      setTestingEmail(true);
+      setTestResult(null);
+      const res = await fetch('/api/notifications/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      const data = await res.json();
+      if (data.status === 'success') {
+        setTestResult({ type: 'success', text: data.message || 'Email de test envoyé avec succès.' });
+      } else {
+        setTestResult({ type: 'error', text: data.message || 'Échec de l\'envoi du test SMTP.' });
+      }
+    } catch (err: any) {
+      setTestResult({ type: 'error', text: `Erreur de connexion au serveur: ${err.message}` });
+    } finally {
+      setTestingEmail(false);
+    }
+  };
 
   const fetchSettings = async () => {
     try {
@@ -198,41 +256,85 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSettingsUpdated })
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2 text-ows-textMain">
               <Mail className="w-4 h-4 text-ows-accent" />
-              <h3 className="font-heading font-semibold text-sm">Notifications Email (Phase 9)</h3>
+              <h3 className="font-heading font-semibold text-sm">Notifications Email (SMTP)</h3>
             </div>
-            <span className="text-[10px] font-mono text-ows-textSubtle px-2 py-0.5 rounded bg-ows-surface2 border border-ows-border">
-              Préparé
+            <span
+              className={`text-[10px] font-mono font-medium px-2.5 py-0.5 rounded border ${
+                smtpStatus?.configured
+                  ? 'bg-ows-accent/15 border-ows-accent/30 text-ows-accent'
+                  : 'bg-amber-500/15 border-amber-500/30 text-amber-400'
+              }`}
+            >
+              {smtpStatus?.configured ? 'SMTP Configuré' : 'Non configuré'}
             </span>
           </div>
+
           <p className="text-xs text-ows-textMuted">
-            Recevez un récapitulatif avec les liens officiels de chaque publication effectuée.
+            Recevez automatiquement une notification par email lors des publications réussies (avec le lien direct du post) ou en cas d'échec.
           </p>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-            <div>
-              <label className="block text-xs font-medium text-ows-textMuted mb-1.5">
-                Email de notification
-              </label>
-              <input
-                type="email"
-                value={settings.notification_email || ''}
-                onChange={(e) => setSettings({ ...settings, notification_email: e.target.value })}
-                placeholder="contact@exemple.com"
-                className="w-full px-3 py-2 bg-ows-surface2 border border-ows-border rounded-lg text-xs text-ows-textMain focus:outline-none focus:border-ows-accent"
-              />
+            <div className="p-3.5 rounded-lg bg-ows-surface2 border border-ows-border space-y-2">
+              <div className="text-xs font-medium text-ows-textMain flex items-center justify-between">
+                <span>Destinataire des alertes</span>
+                <span className="font-mono text-[11px] text-ows-textSubtle">NOTIFICATION_EMAIL</span>
+              </div>
+              <div className="text-xs text-ows-textMuted font-mono">
+                {smtpStatus?.recipient || 'Non renseigné dans .env'}
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-ows-textMuted mb-1.5">
-                Serveur SMTP Host
-              </label>
-              <input
-                type="text"
-                value={settings.smtp_host || ''}
-                onChange={(e) => setSettings({ ...settings, smtp_host: e.target.value })}
-                placeholder="smtp.example.com"
-                className="w-full px-3 py-2 bg-ows-surface2 border border-ows-border rounded-lg text-xs text-ows-textMain focus:outline-none focus:border-ows-accent font-mono"
-              />
+
+            <div className="p-3.5 rounded-lg bg-ows-surface2 border border-ows-border space-y-2">
+              <div className="text-xs font-medium text-ows-textMain flex items-center justify-between">
+                <span>Serveur SMTP</span>
+                <span className="font-mono text-[11px] text-ows-textSubtle">
+                  {smtpStatus?.secure ? 'SSL/TLS' : 'STARTTLS'}
+                </span>
+              </div>
+              <div className="text-xs text-ows-textMuted font-mono">
+                {smtpStatus?.host ? `${smtpStatus.host}:${smtpStatus.port || 587}` : 'Non configuré dans .env'}
+              </div>
             </div>
           </div>
+
+          {/* Test d'envoi SMTP & Message de retour */}
+          <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-ows-border">
+            <div className="flex items-center space-x-2 text-[11px] text-ows-textSubtle">
+              <ShieldCheck className="w-3.5 h-3.5 text-ows-accent" />
+              <span>Les mots de passe SMTP sont gérés de manière sécurisée via le fichier <code className="text-ows-textMuted">.env</code> local.</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleTestEmail}
+              disabled={testingEmail}
+              className="inline-flex items-center justify-center space-x-2 px-3.5 py-1.5 rounded-lg bg-ows-surface2 hover:bg-ows-surfaceCard border border-ows-border text-xs text-ows-textMain hover:text-ows-accent transition-colors disabled:opacity-50"
+            >
+              {testingEmail ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Send className="w-3.5 h-3.5" />
+              )}
+              <span>{testingEmail ? 'Envoi du test...' : 'Envoyer un email de test'}</span>
+            </button>
+          </div>
+
+          {testResult && (
+            <div
+              className={`flex items-center space-x-2 p-3 rounded-lg text-xs font-medium border ${
+                testResult.type === 'success'
+                  ? 'bg-ows-accent/10 border-ows-accent/30 text-ows-accent'
+                  : 'bg-red-500/10 border-red-500/30 text-red-400'
+              }`}
+            >
+              {testResult.type === 'success' ? (
+                <Check className="w-4 h-4 flex-shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              )}
+              <span>{testResult.text}</span>
+            </div>
+          )}
         </div>
 
         {/* Bouton de sauvegarde */}
