@@ -23,7 +23,7 @@ Le système d'email accompagne Kalf tout au long de la journée sans spam ni fau
   * Métriques : déjà planifié aujourd'hui, déjà publié, restant à publier, série en cours (*streak*).
   * **Si des publications sont déjà planifiées :** liste détaillée avec heure prévue, campagne, plateforme, titre et vidéo source.
   * **Si rien n'est planifié :** message d'alerte bienveillant : *"Tu n'as encore planifié aucune publication aujourd'hui. Il est temps d'organiser tes clips pour respecter ta discipline quotidienne."*
-  * Lien direct vers PostBoy (`CLIENT_URL` ou `https://postboy.vercel.app`).
+  * Lien direct vers PostBoy (`CLIENT_URL` ou `https://pbplan.vercel.app`).
 * **Idempotence :** Maximum 1 email par jour (`type = 'morning_reminder'`).
 
 ### 2. Rappels dans la journée — Vérification toutes les 30 min
@@ -80,7 +80,7 @@ SMTP_FROM="PostBoy <votre-email@gmail.com>"
 NOTIFICATION_EMAIL="votre-email-personnel@gmail.com"
 
 # URL de l'application cliente
-CLIENT_URL="https://postboy.vercel.app"
+CLIENT_URL="https://pbplan.vercel.app"
 
 # Clé secrète pour sécuriser les routes Vercel Cron
 CRON_SECRET="une_cle_secrete_aleatoire_et_robuste"

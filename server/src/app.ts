@@ -42,6 +42,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       clientUrl,
       'http://localhost:5173',
       'http://127.0.0.1:5173',
+      'https://pbplan.vercel.app',
       'https://postboy.vercel.app',
       'https://postboy-inky.vercel.app',
       'https://postboy-kalifas-projects.vercel.app'

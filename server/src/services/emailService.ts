@@ -436,7 +436,7 @@ Consultez PostBoy pour corriger et republier manuellement si nécessaire.
     `, [dateStr]);
 
     const config = this.getSmtpConfig();
-    const clientUrl = process.env.CLIENT_URL || 'https://postboy.vercel.app';
+    const clientUrl = process.env.CLIENT_URL || 'https://pbplan.vercel.app';
     const subject = `PostBoy — 06:00 : Planification de tes 5 publications du jour`;
 
     let planSummaryText = '';
@@ -627,7 +627,7 @@ PostBoy — Organisation & Discipline de Clipping
 
     let sentCount = 0;
     const config = this.getSmtpConfig();
-    const clientUrl = process.env.CLIENT_URL || 'https://postboy.vercel.app';
+    const clientUrl = process.env.CLIENT_URL || 'https://pbplan.vercel.app';
     const goal = await getDailyClippingGoal(db);
 
     for (const pub of overduePubs) {
@@ -790,7 +790,7 @@ PostBoy — Organisation & Suivi de clipping
 
     let sentCount = 0;
     const config = this.getSmtpConfig();
-    const clientUrl = process.env.CLIENT_URL || 'https://postboy.vercel.app';
+    const clientUrl = process.env.CLIENT_URL || 'https://pbplan.vercel.app';
     const goal = await getDailyClippingGoal(db);
 
     for (const pub of upcomingPubs) {
@@ -935,7 +935,7 @@ PostBoy — Organisation & Suivi de clipping
     }
 
     const config = this.getSmtpConfig();
-    const clientUrl = process.env.CLIENT_URL || 'https://postboy.vercel.app';
+    const clientUrl = process.env.CLIENT_URL || 'https://pbplan.vercel.app';
     const subject = `PostBoy — Félicitations ! Objectif du jour atteint (${goal.publishedToday}/5)`;
 
     const textContent = `
@@ -1040,7 +1040,7 @@ PostBoy — Organisation & Discipline de clipping
 
     const goal = await getDailyClippingGoal(db, dateStr);
     const config = this.getSmtpConfig();
-    const clientUrl = process.env.CLIENT_URL || 'https://postboy.vercel.app';
+    const clientUrl = process.env.CLIENT_URL || 'https://pbplan.vercel.app';
 
     const statusTitle = goal.isGoalMet ? 'Objectif Atteint' : 'Objectif Non Atteint';
     const subject = `PostBoy — Bilan du jour : ${statusTitle} (${goal.publishedToday}/5)`;

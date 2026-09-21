@@ -1,6 +1,6 @@
 # POSTBOY — GUIDE DE DÉPLOIEMENT EN PRODUCTION SUR VERCEL
 
-Ce guide détaille la mise en ligne de **PostBoy** sur Vercel à l'adresse **`https://postboy.vercel.app`**.
+Ce guide détaille la mise en ligne de **PostBoy** sur Vercel à l'adresse **`https://pbplan.vercel.app`**.
 
 ---
 
@@ -22,7 +22,7 @@ Dans les paramètres de votre projet Vercel (**Settings** → **Environment Vari
 | :--- | :--- | :--- |
 | `TURSO_DATABASE_URL` | `libsql://postboy-db-kalf91y.aws-us-east-1.turso.io` | URL de votre base de données Turso Cloud |
 | `TURSO_AUTH_TOKEN` | `eyJhbGciOi...` | Jeton d'accès JWT généré par Turso |
-| `CLIENT_URL` | `https://postboy.vercel.app` | URL de production pour les autorisations CORS |
+| `CLIENT_URL` | `https://pbplan.vercel.app` | URL de production pour les autorisations CORS |
 | `DEFAULT_TIMEZONE` | `Africa/Bamako` | Fuseau horaire de référence (UTC+0) |
 | `CRON_SECRET` | `votre_cle_secrete_aleatoire` | Clé secrète protégeant les routes `/api/cron/*` |
 | `SMTP_HOST` | `smtp.gmail.com` | Serveur SMTP pour les rappels de discipline |
@@ -45,7 +45,7 @@ Dans les paramètres de votre projet Vercel (**Settings** → **Environment Vari
 2. Cliquez sur **Add New...** → **Project**.
 3. Importez votre dépôt Git : `kalifa4y/PostBoy`.
 4. Configurez le projet :
-   * **Project Name :** `postboy` (pour obtenir `https://postboy.vercel.app`).
+   * **Project Name :** `postboy` (pour obtenir `https://pbplan.vercel.app`).
    * **Framework Preset :** `Other` (le fichier `vercel.json` à la racine configure automatiquement le build et les sorties).
    * **Root Directory :** `./` (laisser par défaut).
 5. Dépliez la section **Environment Variables** et saisissez les variables listées ci-dessus.
@@ -76,27 +76,27 @@ vercel --prod
 
 ## 4. VÉRIFICATION POST-DÉPLOIEMENT
 
-L'URL publique officielle et unique de PostBoy en production est : **`https://postboy.vercel.app`**.
+L'URL publique officielle et unique de PostBoy en production est : **`https://pbplan.vercel.app`**.
 
 1. **Vérification de l'API Santé :**
-   Accédez à : `https://postboy.vercel.app/api/health`
+   Accédez à : `https://pbplan.vercel.app/api/health`
    * Format de réponse attendu : `{"status":"ok","service":"PostBoy API","version":"0.1.0","database":"connected","activeTimezone":"Africa/Bamako","tablesCount":5,"tables":["settings","campaigns","videos","publications","notifications"]}`
 2. **Vérification de la base Turso :**
-   Accédez à : `https://postboy.vercel.app/api/campaigns`
+   Accédez à : `https://pbplan.vercel.app/api/campaigns`
    * Résultat : `{"status":"success","campaigns":[]}` (connecté à Turso AWS US-East-1).
 3. **Vérification du Frontend :**
-   Accédez à : `https://postboy.vercel.app/`
+   Accédez à : `https://pbplan.vercel.app/`
    * Résultat : Chargement instantané du Dashboard PostBoy depuis PC ou smartphone, avec navigation fluide (Dashboard, Publications, Calendrier, Vidéothèque, Campagnes, Paramètres).
 4. **Vérification de la protection Cron :**
-   * `curl https://postboy.vercel.app/api/cron/morning` → `401 Unauthorized` (`Invalid or missing cron authorization key`).
-   * `curl https://postboy.vercel.app/api/cron/morning?key=VOTRE_CRON_SECRET` → `200 OK` (`job: "morning"`).
+   * `curl https://pbplan.vercel.app/api/cron/morning` → `401 Unauthorized` (`Invalid or missing cron authorization key`).
+   * `curl https://pbplan.vercel.app/api/cron/morning?key=VOTRE_CRON_SECRET` → `200 OK` (`job: "morning"`).
 5. **Vérification des tâches Cron sur Vercel :**
    Dans le tableau de bord Vercel du projet PostBoy (**Settings** → **Cron Jobs**), les 3 tâches quotidiennes sont actives :
    * `/api/cron/morning` (`0 6 * * *` — 06:00 UTC)
    * `/api/cron/check-reminders` (`0 14 * * *` — 14:00 UTC)
    * `/api/cron/evening` (`0 22 * * *` — 22:00 UTC)
 
-> **Note sur le plan Vercel Hobby :** Vercel restreint les crons automatiques à des fréquences quotidiennes au minimum (1 fois par jour max). Si un rappel toutes les 30 minutes est nécessaire, un ping externe gratuit (ex: cron-job.org ou GitHub Actions) peut appeler `https://postboy.vercel.app/api/cron/check-reminders?key=CRON_SECRET`.
+> **Note sur le plan Vercel Hobby :** Vercel restreint les crons automatiques à des fréquences quotidiennes au minimum (1 fois par jour max). Si un rappel toutes les 30 minutes est nécessaire, un ping externe gratuit (ex: cron-job.org ou GitHub Actions) peut appeler `https://pbplan.vercel.app/api/cron/check-reminders?key=CRON_SECRET`.
 
 ---
 
