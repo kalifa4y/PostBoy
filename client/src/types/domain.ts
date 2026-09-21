@@ -20,8 +20,12 @@ export interface Video {
   file_size: number;
   duration: number;
   mime_type: string;
+  thumbnail_path?: string | null;
   campaign_id?: string | null;
+  campaign_name?: string | null;
+  campaign_color?: string | null;
   notes?: string | null;
+  status: string;
   created_at: string;
   updated_at: string;
 }

@@ -3,12 +3,12 @@ import { Sidebar, NavTab } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { DashboardView } from './views/DashboardView';
 import { CampaignsView } from './views/CampaignsView';
+import { VideosView } from './views/VideosView';
 import { FoundationView } from './views/FoundationView';
 import { SettingsView } from './views/SettingsView';
 import { PlaceholderView } from './views/PlaceholderView';
 import { HealthStatus } from './types/domain';
 import {
-  Film,
   Send,
   Calendar,
   Share2
@@ -105,17 +105,7 @@ export const App: React.FC = () => {
           )}
 
           {activeTab === 'videos' && (
-            <PlaceholderView
-              phaseNumber={3}
-              title="Bibliothèque de Vidéos & Import Multiple"
-              description="Téléversement et gestion d un nombre illimité de fichiers vidéo locaux avec extraction de métadonnées."
-              icon={Film}
-              deliverables={[
-                'Upload unique ou par lots (1, 5, 20, 50+ vidéos)',
-                'Stockage local sécurisé dans /uploads',
-                'Association automatique ou manuelle à une campagne'
-              ]}
-            />
+            <VideosView activeTimezone={health?.activeTimezone || 'Africa/Bamako'} />
           )}
 
           {activeTab === 'publications' && (

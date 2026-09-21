@@ -27,6 +27,16 @@ export function initializeDatabase(): void {
     db.exec("ALTER TABLE campaigns ADD COLUMN status TEXT NOT NULL DEFAULT 'active';");
   }
 
+  // Migration dynamique non-destructive pour la table videos
+  const videoColumns = db.prepare("PRAGMA table_info(videos)").all() as Array<{ name: string }>;
+  const videoColNames = videoColumns.map(c => c.name);
+  if (!videoColNames.includes('thumbnail_path')) {
+    db.exec("ALTER TABLE videos ADD COLUMN thumbnail_path TEXT;");
+  }
+  if (!videoColNames.includes('status')) {
+    db.exec("ALTER TABLE videos ADD COLUMN status TEXT NOT NULL DEFAULT 'ready';");
+  }
+
   // Initialisation des paramètres par défaut s'ils n'existent pas encore
   const defaultSettings = [
     { key: 'timezone', value: process.env.DEFAULT_TIMEZONE || 'Africa/Bamako' },

@@ -31,8 +31,10 @@ CREATE TABLE IF NOT EXISTS videos (
   file_size INTEGER NOT NULL,
   duration REAL DEFAULT 0,
   mime_type TEXT NOT NULL,
+  thumbnail_path TEXT,
   campaign_id TEXT REFERENCES campaigns(id) ON DELETE SET NULL,
   notes TEXT,
+  status TEXT NOT NULL DEFAULT 'ready',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

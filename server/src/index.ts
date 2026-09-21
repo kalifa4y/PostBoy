@@ -4,10 +4,14 @@ import dotenv from 'dotenv';
 import path from 'node:path';
 import { initializeDatabase } from './db/init.js';
 import { closeDatabase } from './db/connection.js';
+import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
+import fs from 'node:fs';
 import { healthRoutes } from './routes/health.js';
 import { settingsRoutes } from './routes/settings.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { campaignRoutes } from './routes/campaigns.js';
+import { videoRoutes } from './routes/videos.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
 dotenv.config();
@@ -15,6 +19,14 @@ dotenv.config();
 const port = Number(process.env.PORT) || 3001;
 const host = process.env.HOST || '127.0.0.1';
 const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+
+const projectRoot = path.basename(process.cwd()) === 'server'
+  ? path.resolve(process.cwd(), '..')
+  : process.cwd();
+const uploadsDir = path.resolve(projectRoot, process.env.UPLOADS_DIR || './uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 // Initialisation de la base SQLite au démarrage
 initializeDatabase();
@@ -30,11 +42,26 @@ await server.register(cors, {
   credentials: true
 });
 
+// Support de l'upload multipart en streaming
+await server.register(multipart, {
+  limits: {
+    fileSize: 1024 * 1024 * 1024, // 1 Go maximum par vidéo
+    files: 100 // Supporte des imports de 100 fichiers simultanés
+  }
+});
+
+// Exposition statique sécurisée du dossier uploads pour prévisualisation HTML5
+await server.register(fastifyStatic, {
+  root: uploadsDir,
+  prefix: '/uploads/'
+});
+
 // Enregistrement des routes API
 await server.register(healthRoutes);
 await server.register(settingsRoutes);
 await server.register(dashboardRoutes);
 await server.register(campaignRoutes);
+await server.register(videoRoutes);
 
 // Gestion de l'arrêt gracieux
 const handleShutdown = async (signal: string) => {
