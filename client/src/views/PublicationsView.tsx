@@ -17,7 +17,7 @@ import {
   AlertTriangle,
   RotateCcw
 } from 'lucide-react';
-import { Publication, Video, Campaign, SocialPlatform, PublicationStatus } from '../types/domain';
+import { Publication, Video, Campaign, SocialPlatform, PublicationStatus, SocialAccount } from '../types/domain';
 
 interface PublicationsViewProps {
   activeTimezone: string;
@@ -69,6 +69,9 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
   const [publications, setPublications] = useState<Publication[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [socialAccounts, setSocialAccounts] = useState<SocialAccount[]>([]);
+  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -88,6 +91,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
   const [createMode, setCreateMode] = useState<'single' | 'multi'>('single');
   const [formVideoId, setFormVideoId] = useState<string>('');
   const [formPlatform, setFormPlatform] = useState<SocialPlatform>('tiktok');
+  const [formSocialAccountId, setFormSocialAccountId] = useState<string>('');
   const [formMultiPlatforms, setFormMultiPlatforms] = useState<SocialPlatform[]>(['tiktok', 'instagram', 'youtube']);
   const [formCaption, setFormCaption] = useState<string>('');
   const [formStatus, setFormStatus] = useState<PublicationStatus>('draft');
@@ -98,6 +102,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
 
   // Formulaire d'Édition
   const [editPlatform, setEditPlatform] = useState<SocialPlatform>('tiktok');
+  const [editSocialAccountId, setEditSocialAccountId] = useState<string>('');
   const [editCaption, setEditCaption] = useState<string>('');
   const [editStatus, setEditStatus] = useState<PublicationStatus>('draft');
   const [editScheduledAt, setEditScheduledAt] = useState<string>('');
@@ -136,9 +141,10 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
 
   const fetchAuxiliaryData = useCallback(async () => {
     try {
-      const [vRes, cRes] = await Promise.all([
+      const [vRes, cRes, sRes] = await Promise.all([
         fetch('/api/videos'),
-        fetch('/api/campaigns')
+        fetch('/api/campaigns'),
+        fetch('/api/social-accounts')
       ]);
       if (vRes.ok) {
         const vData = await vRes.json();
@@ -147,6 +153,10 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
       if (cRes.ok) {
         const cData = await cRes.json();
         if (cData.status === 'success') setCampaigns(cData.campaigns || []);
+      }
+      if (sRes.ok) {
+        const sData = await sRes.json();
+        if (sData.success) setSocialAccounts(sData.accounts || []);
       }
     } catch (err) {
       console.error('Erreur chargement données auxiliaires:', err);
@@ -222,7 +232,10 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
   };
 
   // Badge Statut
-  const renderStatusBadge = (status: PublicationStatus) => {
+  const renderStatusBadge = (pubOrStatus: Publication | PublicationStatus) => {
+    const status = typeof pubOrStatus === 'string' ? pubOrStatus : pubOrStatus.status;
+    const errorMessage = typeof pubOrStatus === 'string' ? null : pubOrStatus.error_message;
+
     switch (status) {
       case 'draft':
         return (
@@ -254,10 +267,17 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
         );
       case 'failed':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/30">
-            <AlertCircle className="w-3 h-3" />
-            Échec
-          </span>
+          <div className="inline-flex flex-col items-start gap-1">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/30" title={errorMessage || undefined}>
+              <AlertCircle className="w-3 h-3" />
+              Échec
+            </span>
+            {errorMessage && (
+              <span className="text-[10px] text-rose-400/80 max-w-[160px] truncate block font-mono" title={errorMessage}>
+                {errorMessage}
+              </span>
+            )}
+          </div>
         );
       case 'cancelled':
         return (
@@ -275,6 +295,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
     setCreateMode(mode);
     setFormVideoId(videos.length > 0 ? videos[0].id : '');
     setFormPlatform('tiktok');
+    setFormSocialAccountId('');
     setFormMultiPlatforms(['tiktok', 'instagram', 'youtube']);
     setFormCaption('');
     setFormStatus('draft');
@@ -331,6 +352,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
           body: JSON.stringify({
             video_id: formVideoId,
             platform: formPlatform,
+            social_account_id: formSocialAccountId || null,
             caption: formCaption,
             status: formStatus,
             scheduled_at: formScheduledAt || null,
@@ -358,6 +380,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
   const handleOpenEdit = (pub: Publication) => {
     setEditingPublication(pub);
     setEditPlatform(pub.platform);
+    setEditSocialAccountId(pub.social_account_id || '');
     setEditCaption(pub.caption || '');
     setEditStatus(pub.status);
     setEditScheduledAt(pub.scheduled_at ? pub.scheduled_at.slice(0, 16) : '');
@@ -379,6 +402,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           platform: editPlatform,
+          social_account_id: editSocialAccountId || null,
           caption: editCaption,
           status: editStatus,
           scheduled_at: editScheduledAt || null,
@@ -398,6 +422,36 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
       setFormError(msg);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Déclenchement manuel de publication immédiate (Phase 7)
+  const handlePublishNow = async (pub: Publication) => {
+    try {
+      setPublishingId(pub.id);
+      setActionFeedback(null);
+
+      const res = await fetch(`/api/publications/${pub.id}/publish`, {
+        method: 'POST'
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.status !== 'success') {
+        throw new Error(data.message || 'Échec de la publication');
+      }
+
+      setActionFeedback({
+        type: 'success',
+        message: `Publication réussie sur ${pub.platform.toUpperCase()} ! Identifiant externe : ${data.publication?.external_post_id || 'validé'}`
+      });
+
+      await fetchPublications();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erreur de publication';
+      setActionFeedback({ type: 'error', message: msg });
+      await fetchPublications();
+    } finally {
+      setPublishingId(null);
     }
   };
 
@@ -600,6 +654,32 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
         </div>
       )}
 
+      {/* Notification feedback après déclenchement immédiat (Phase 7) */}
+      {actionFeedback && (
+        <div
+          className={`p-4 rounded-xl border flex items-center justify-between gap-3 text-sm animate-fade-in ${
+            actionFeedback.type === 'success'
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+              : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            {actionFeedback.type === 'success' ? (
+              <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+            ) : (
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            )}
+            <span>{actionFeedback.message}</span>
+          </div>
+          <button
+            onClick={() => setActionFeedback(null)}
+            className="p-1 text-ows-text-muted hover:text-ows-text-main rounded-md transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* 4. Liste des Publications */}
       {loading ? (
         <div className="p-12 text-center text-ows-text-muted">
@@ -631,7 +711,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                 <tr>
                   <th className="py-3.5 px-4 font-semibold">Vidéo Source</th>
                   <th className="py-3.5 px-4 font-semibold">Campagne</th>
-                  <th className="py-3.5 px-4 font-semibold">Plateforme</th>
+                  <th className="py-3.5 px-4 font-semibold">Plateforme & Compte</th>
                   <th className="py-3.5 px-4 font-semibold">Statut</th>
                   <th className="py-3.5 px-4 font-semibold">Légende (Caption)</th>
                   <th className="py-3.5 px-4 font-semibold">Programmation</th>
@@ -673,14 +753,28 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                       )}
                     </td>
 
-                    {/* Plateforme */}
+                    {/* Plateforme & Compte lié */}
                     <td className="py-3.5 px-4 whitespace-nowrap">
-                      {renderPlatformBadge(pub.platform)}
+                      <div className="flex flex-col gap-1 items-start">
+                        {renderPlatformBadge(pub.platform)}
+                        {pub.social_account_username ? (
+                          <span
+                            className="inline-flex items-center text-[10px] text-ows-text-muted font-mono bg-black/60 px-1.5 py-0.5 rounded border border-ows-border"
+                            title={`Compte lié: @${pub.social_account_username}`}
+                          >
+                            @{pub.social_account_username}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-ows-text-subtle italic">
+                            Non assigné
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Statut */}
                     <td className="py-3.5 px-4 whitespace-nowrap">
-                      {renderStatusBadge(pub.status)}
+                      {renderStatusBadge(pub)}
                     </td>
 
                     {/* Légende / Caption */}
@@ -701,6 +795,22 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                     {/* Actions */}
                     <td className="py-3.5 px-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">
+                        {/* Action Publier maintenant (Phase 7) */}
+                        {(pub.status === 'scheduled' || pub.status === 'draft' || pub.status === 'failed') && (
+                          <button
+                            onClick={() => handlePublishNow(pub)}
+                            disabled={publishingId === pub.id}
+                            className="p-1.5 text-ows-accent hover:text-ows-accent-hover hover:bg-ows-accent/10 rounded transition-colors disabled:opacity-50"
+                            title="Publier maintenant via API officielle"
+                          >
+                            {publishingId === pub.id ? (
+                              <RotateCcw className="w-4 h-4 animate-spin text-amber-400" />
+                            ) : (
+                              <Send className="w-4 h-4" />
+                            )}
+                          </button>
+                        )}
+
                         {pub.external_url && (
                           <a
                             href={pub.external_url}
@@ -868,6 +978,38 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Compte Social Connecté (en mode unitaire) */}
+              {createMode === 'single' && (
+                <div>
+                  <label className="block text-xs font-medium text-ows-text-muted mb-1.5">
+                    Compte social pour la publication ({formPlatform})
+                  </label>
+                  {socialAccounts.filter(a => a.platform === formPlatform).length === 0 ? (
+                    <div className="p-3 bg-black border border-amber-500/30 rounded-lg text-xs text-amber-400/90 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                      <span>
+                        Aucun compte {formPlatform} connecté. Vous pouvez en connecter un dans l&apos;onglet Comptes Réseaux.
+                      </span>
+                    </div>
+                  ) : (
+                    <select
+                      value={formSocialAccountId}
+                      onChange={(e) => setFormSocialAccountId(e.target.value)}
+                      className="w-full bg-black border border-ows-border rounded-lg px-3.5 py-2.5 text-sm text-ows-text-main focus:outline-none focus:border-ows-accent"
+                    >
+                      <option value="">Sélectionner un compte (optionnel)</option>
+                      {socialAccounts
+                        .filter(a => a.platform === formPlatform)
+                        .map(acc => (
+                          <option key={acc.id} value={acc.id}>
+                            @{acc.username} {acc.display_name ? `(${acc.display_name})` : ''} [{acc.status}]
+                          </option>
+                        ))}
+                    </select>
+                  )}
                 </div>
               )}
 
@@ -1043,6 +1185,34 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                     <option value="cancelled">Annulée</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Compte Social Connecté */}
+              <div>
+                <label className="block text-xs font-medium text-ows-text-muted mb-1.5">
+                  Compte social connecté ({editPlatform})
+                </label>
+                {socialAccounts.filter(a => a.platform === editPlatform).length === 0 ? (
+                  <div className="p-2.5 bg-black border border-amber-500/30 rounded-lg text-xs text-amber-400/90 flex items-center gap-2">
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>Aucun compte {editPlatform} connecté.</span>
+                  </div>
+                ) : (
+                  <select
+                    value={editSocialAccountId}
+                    onChange={(e) => setEditSocialAccountId(e.target.value)}
+                    className="w-full bg-black border border-ows-border rounded-lg px-3 py-2 text-sm text-ows-text-main focus:outline-none focus:border-ows-accent"
+                  >
+                    <option value="">Aucun compte assigné</option>
+                    {socialAccounts
+                      .filter(a => a.platform === editPlatform)
+                      .map(acc => (
+                        <option key={acc.id} value={acc.id}>
+                          @{acc.username} {acc.display_name ? `(${acc.display_name})` : ''} [{acc.status}]
+                        </option>
+                      ))}
+                  </select>
+                )}
               </div>
 
               {/* Caption */}

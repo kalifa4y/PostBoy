@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import crypto from 'node:crypto';
 import { getDatabase } from '../db/connection.js';
+import { publicationService } from '../services/publicationService.js';
 
 export const ALLOWED_PLATFORMS = ['tiktok', 'instagram', 'youtube'] as const;
 export type AllowedPlatform = typeof ALLOWED_PLATFORMS[number];
@@ -37,6 +38,8 @@ export interface PublicationRow {
   video_file_size: number | null;
   video_duration: number | null;
   video_thumbnail_path: string | null;
+  social_account_username?: string | null;
+  social_account_display_name?: string | null;
 }
 
 export async function publicationRoutes(fastify: FastifyInstance): Promise<void> {
@@ -53,10 +56,13 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         v.file_path as video_file_path,
         v.file_size as video_file_size,
         v.duration as video_duration,
-        v.thumbnail_path as video_thumbnail_path
+        v.thumbnail_path as video_thumbnail_path,
+        sa.username as social_account_username,
+        sa.display_name as social_account_display_name
       FROM publications p
       LEFT JOIN campaigns c ON p.campaign_id = c.id
       LEFT JOIN videos v ON p.video_id = v.id
+      LEFT JOIN social_accounts sa ON p.social_account_id = sa.id
       WHERE p.id = ?
     `).get(id) as unknown as PublicationRow | undefined;
   };
@@ -142,10 +148,13 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
           v.file_path as video_file_path,
           v.file_size as video_file_size,
           v.duration as video_duration,
-          v.thumbnail_path as video_thumbnail_path
+          v.thumbnail_path as video_thumbnail_path,
+          sa.username as social_account_username,
+          sa.display_name as social_account_display_name
         FROM publications p
         LEFT JOIN campaigns c ON p.campaign_id = c.id
         LEFT JOIN videos v ON p.video_id = v.id
+        LEFT JOIN social_accounts sa ON p.social_account_id = sa.id
         ${whereClause}
         ORDER BY datetime(COALESCE(p.scheduled_at, p.created_at)) DESC
       `;
@@ -643,6 +652,16 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         params.push(body.error_message ? body.error_message.trim() : null);
       }
 
+      // Modification du compte social
+      if (body.social_account_id !== undefined) {
+        if (body.social_account_id && typeof body.social_account_id === 'string' && body.social_account_id.trim() !== '' && body.social_account_id !== 'unassigned') {
+          updates.push('social_account_id = ?');
+          params.push(body.social_account_id.trim());
+        } else {
+          updates.push('social_account_id = NULL');
+        }
+      }
+
       if (updates.length === 0) {
         return reply.code(200).send({
           status: 'success',
@@ -665,6 +684,67 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Erreur lors de la mise à jour de la publication';
+      fastify.log.error(error);
+      return reply.code(500).send({ status: 'error', message });
+    }
+  });
+
+  // POST /api/publications/:id/publish - Déclenchement manuel de la publication
+  fastify.post<{ Params: { id: string } }>('/api/publications/:id/publish', async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const db = getDatabase();
+
+      const publication = db.prepare('SELECT id, status, published_at FROM publications WHERE id = ?').get(id) as unknown as PublicationRow | undefined;
+      if (!publication) {
+        return reply.code(404).send({
+          status: 'error',
+          message: `Publication introuvable avec l'identifiant ${id}`
+        });
+      }
+
+      if (publication.status === 'published') {
+        return reply.code(400).send({
+          status: 'error',
+          message: `Cette publication a déjà été publiée avec succès le ${publication.published_at}`
+        });
+      }
+
+      if (publication.status === 'cancelled') {
+        return reply.code(400).send({
+          status: 'error',
+          message: 'Impossible de publier une publication annulée.'
+        });
+      }
+
+      if (publication.status === 'publishing') {
+        return reply.code(409).send({
+          status: 'error',
+          message: "Cette publication est déjà en cours d'envoi."
+        });
+      }
+
+      // Déclenchement via le moteur PublicationService
+      const result = await publicationService.publishPublication(id, { forceManual: true });
+
+      const updated = getPublicationWithDetails(id);
+
+      if (result.success) {
+        return reply.code(200).send({
+          status: 'success',
+          message: 'Publication effectuée avec succès !',
+          publication: updated,
+          result
+        });
+      } else {
+        return reply.code(400).send({
+          status: 'error',
+          message: result.errorMessage || "Échec lors de l'envoi de la publication",
+          publication: updated
+        });
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Erreur lors de la publication';
       fastify.log.error(error);
       return reply.code(500).send({ status: 'error', message });
     }

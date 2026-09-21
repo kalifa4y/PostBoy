@@ -14,6 +14,7 @@ import { campaignRoutes } from './routes/campaigns.js';
 import { videoRoutes } from './routes/videos.js';
 import { publicationRoutes } from './routes/publications.js';
 import { socialAccountRoutes } from './routes/socialAccounts.js';
+import { startPublicationScheduler, stopPublicationScheduler } from './services/publicationScheduler.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
 dotenv.config();
@@ -71,6 +72,7 @@ await server.register(socialAccountRoutes);
 const handleShutdown = async (signal: string) => {
   server.log.info(`Signal ${signal} reçu, arrêt gracieux du serveur...`);
   try {
+    await stopPublicationScheduler();
     await server.close();
     closeDatabase();
     process.exit(0);
@@ -83,10 +85,11 @@ const handleShutdown = async (signal: string) => {
 process.on('SIGINT', () => handleShutdown('SIGINT'));
 process.on('SIGTERM', () => handleShutdown('SIGTERM'));
 
-// Démarrage du serveur
+// Démarrage du serveur et du planificateur de publications
 try {
   await server.listen({ port, host });
   console.log(`[PostBoy Server] Prêt et à l'écoute sur http://${host}:${port}`);
+  startPublicationScheduler();
 } catch (err) {
   server.log.error(err);
   process.exit(1);

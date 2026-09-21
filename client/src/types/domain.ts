@@ -89,6 +89,8 @@ export interface Publication {
   video_file_size?: number | null;
   video_duration?: number | null;
   video_thumbnail_path?: string | null;
+  social_account_username?: string | null;
+  social_account_display_name?: string | null;
 }
 
 export interface PublicationLog {
