@@ -32,15 +32,30 @@ export interface Video {
 
 export type SocialPlatform = 'tiktok' | 'instagram' | 'youtube' | 'facebook' | 'twitter' | 'linkedin';
 
+export type SocialAccountStatus = 'connected' | 'expired' | 'disconnected' | 'error';
+
 export interface SocialAccount {
   id: string;
   platform: SocialPlatform;
-  account_name: string;
-  account_id?: string | null;
-  status: 'active' | 'disconnected' | 'expired';
+  account_id: string;
+  username: string;
+  display_name?: string | null;
+  account_name?: string; // Compatibilité rétroactive
+  status: SocialAccountStatus;
   token_expires_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface PlatformConfigStatus {
+  name: string;
+  configured: boolean;
+}
+
+export interface SocialAccountsApiResponse {
+  success: boolean;
+  accounts: SocialAccount[];
+  platforms: Record<'tiktok' | 'instagram' | 'youtube', PlatformConfigStatus>;
 }
 
 export type PublicationStatus = 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed' | 'cancelled';

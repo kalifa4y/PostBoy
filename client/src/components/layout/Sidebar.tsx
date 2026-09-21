@@ -60,7 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       id: 'accounts' as NavTab,
       label: 'Comptes Sociaux',
       icon: Share2,
-      badge: 'Phase 6'
+      badge: 'Actif'
     },
     {
       id: 'settings' as NavTab,

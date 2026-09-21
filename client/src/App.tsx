@@ -8,16 +8,25 @@ import { PublicationsView } from './views/PublicationsView';
 import { CalendarView } from './views/CalendarView';
 import { FoundationView } from './views/FoundationView';
 import { SettingsView } from './views/SettingsView';
-import { PlaceholderView } from './views/PlaceholderView';
+import { AccountsView } from './views/AccountsView';
 import { HealthStatus } from './types/domain';
-import {
-  Share2
-} from 'lucide-react';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [loadingHealth, setLoadingHealth] = useState<boolean>(true);
+
+  // Détection du paramètre d'onglet dans l'URL (ex: retour OAuth ?tab=accounts)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab') as NavTab | null;
+    if (
+      tabParam &&
+      ['dashboard', 'campaigns', 'videos', 'publications', 'calendar', 'accounts', 'settings', 'foundation'].includes(tabParam)
+    ) {
+      setActiveTab(tabParam);
+    }
+  }, []);
 
   const fetchHealth = useCallback(async () => {
     try {
@@ -120,17 +129,7 @@ export const App: React.FC = () => {
           )}
 
           {activeTab === 'accounts' && (
-            <PlaceholderView
-              phaseNumber={6}
-              title="Connexion des Comptes Sociaux"
-              description="Liaison sécurisée des profils sociaux via les APIs et flux officiels sans jamais stocker de mot de passe."
-              icon={Share2}
-              deliverables={[
-                'Connexion OAuth2 sécurisée (TikTok, Instagram, YouTube)',
-                'Chiffrement AES-256-GCM local des tokens d accès',
-                'Gestion du rafraîchissement des jetons expirés'
-              ]}
-            />
+            <AccountsView activeTimezone={health?.activeTimezone || 'Africa/Bamako'} />
           )}
         </main>
       </div>

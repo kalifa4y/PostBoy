@@ -43,13 +43,16 @@ CREATE TABLE IF NOT EXISTS videos (
 CREATE TABLE IF NOT EXISTS social_accounts (
   id TEXT PRIMARY KEY,
   platform TEXT NOT NULL,
-  account_name TEXT NOT NULL,
-  account_id TEXT,
-  status TEXT NOT NULL DEFAULT 'active',
+  account_id TEXT NOT NULL,
+  username TEXT NOT NULL,
+  display_name TEXT,
+  access_token_encrypted TEXT NOT NULL,
+  refresh_token_encrypted TEXT,
   token_expires_at TEXT,
-  encrypted_credentials TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'connected',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(platform, account_id)
 );
 
 -- Table des publications

@@ -47,6 +47,48 @@ export function initializeDatabase(): void {
     db.exec("ALTER TABLE publications ADD COLUMN external_url TEXT;");
   }
 
+  // Migration dynamique non-destructive pour la table social_accounts
+  const socialAccountColumns = db.prepare("PRAGMA table_info(social_accounts)").all() as Array<{ name: string }>;
+  const saColNames = socialAccountColumns.map(c => c.name);
+
+  // Si l'ancienne colonne account_name existe encore, on effectue la migration vers le schéma Phase 6
+  if (saColNames.includes('account_name')) {
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      CREATE TABLE IF NOT EXISTS social_accounts_v6 (
+        id TEXT PRIMARY KEY,
+        platform TEXT NOT NULL,
+        account_id TEXT NOT NULL,
+        username TEXT NOT NULL,
+        display_name TEXT,
+        access_token_encrypted TEXT NOT NULL,
+        refresh_token_encrypted TEXT,
+        token_expires_at TEXT,
+        status TEXT NOT NULL DEFAULT 'connected',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(platform, account_id)
+      );
+
+      INSERT OR IGNORE INTO social_accounts_v6 (
+        id, platform, account_id, username, display_name,
+        access_token_encrypted, token_expires_at, status, created_at, updated_at
+      )
+      SELECT
+        id, platform, COALESCE(account_id, id), COALESCE(account_name, id), account_name,
+        COALESCE(encrypted_credentials, ''), token_expires_at,
+        CASE WHEN status = 'active' THEN 'connected' ELSE status END,
+        created_at, updated_at
+      FROM social_accounts;
+
+      DROP TABLE social_accounts;
+      ALTER TABLE social_accounts_v6 RENAME TO social_accounts;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
+
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_social_accounts_platform_account ON social_accounts(platform, account_id);");
+
   // Initialisation des paramètres par défaut s'ils n'existent pas encore
   const defaultSettings = [
     { key: 'timezone', value: process.env.DEFAULT_TIMEZONE || 'Africa/Bamako' },
