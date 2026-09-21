@@ -1,0 +1,17 @@
+{
+  "name": "postboy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Clipping Publisher - Gestion et programmation de clips multi-plateformes",
+  "scripts": {
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"green,cyan\" \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "build": "npm --prefix client run build && npm --prefix server run build",
+    "test": "npm --prefix server test",
+    "db:init": "npm --prefix server run db:init"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}
