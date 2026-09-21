@@ -6,6 +6,7 @@ import {
   Trash2,
   Edit3,
   Copy,
+  Check,
   ExternalLink,
   Clock,
   AlertCircle,
@@ -15,7 +16,9 @@ import {
   Film,
   Layers,
   AlertTriangle,
-  RotateCcw
+  RotateCcw,
+  Tag,
+  FileText
 } from 'lucide-react';
 import { Publication, Video, Campaign, SocialPlatform, PublicationStatus } from '../types/domain';
 
@@ -70,6 +73,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
   const [videos, setVideos] = useState<Video[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [copiedPubId, setCopiedPubId] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,15 +87,17 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
   const [editingPublication, setEditingPublication] = useState<Publication | null>(null);
   const [duplicatingPublication, setDuplicatingPublication] = useState<Publication | null>(null);
+  const [publishingPublication, setPublishingPublication] = useState<Publication | null>(null);
   const [deletingPublication, setDeletingPublication] = useState<Publication | null>(null);
 
   // Formulaire de Création
   const [createMode, setCreateMode] = useState<'single' | 'multi'>('single');
   const [formVideoId, setFormVideoId] = useState<string>('');
   const [formPlatform, setFormPlatform] = useState<SocialPlatform>('tiktok');
-  const [formSocialAccountId, setFormSocialAccountId] = useState<string>('');
   const [formMultiPlatforms, setFormMultiPlatforms] = useState<SocialPlatform[]>(['tiktok', 'instagram', 'youtube']);
   const [formCaption, setFormCaption] = useState<string>('');
+  const [formHashtags, setFormHashtags] = useState<string>('');
+  const [formNotes, setFormNotes] = useState<string>('');
   const [formStatus, setFormStatus] = useState<PublicationStatus>('draft');
   const [formScheduledAt, setFormScheduledAt] = useState<string>('');
   const [formCampaignId, setFormCampaignId] = useState<string>('auto');
@@ -100,17 +106,25 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
 
   // Formulaire d'Édition
   const [editPlatform, setEditPlatform] = useState<SocialPlatform>('tiktok');
-  const [editSocialAccountId, setEditSocialAccountId] = useState<string>('');
   const [editCaption, setEditCaption] = useState<string>('');
+  const [editHashtags, setEditHashtags] = useState<string>('');
+  const [editNotes, setEditNotes] = useState<string>('');
   const [editStatus, setEditStatus] = useState<PublicationStatus>('draft');
   const [editScheduledAt, setEditScheduledAt] = useState<string>('');
-  const [editExternalUrl, setEditExternalUrl] = useState<string>('');
+  const [editPostUrl, setEditPostUrl] = useState<string>('');
 
   // Formulaire de Duplication
   const [duplicateTargetPlatform, setDuplicateTargetPlatform] = useState<SocialPlatform>('instagram');
   const [duplicateCaption, setDuplicateCaption] = useState<string>('');
+  const [duplicateHashtags, setDuplicateHashtags] = useState<string>('');
+  const [duplicateNotes, setDuplicateNotes] = useState<string>('');
   const [duplicateScheduledAt, setDuplicateScheduledAt] = useState<string>('');
   const [duplicateStatus, setDuplicateStatus] = useState<PublicationStatus>('draft');
+
+  // Formulaire Marquer comme Publié
+  const [publishPostUrl, setPublishPostUrl] = useState<string>('');
+  const [publishNotes, setPublishNotes] = useState<string>('');
+  const [publishError, setPublishError] = useState<string | null>(null);
 
   // Chargement des données
   const fetchPublications = useCallback(async () => {
@@ -182,13 +196,35 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
     }
   };
 
+  // Helper de vérification du retard
+  const isPublicationOverdue = (pub: Publication): boolean => {
+    if (pub.status !== 'scheduled' || !pub.scheduled_at) return false;
+    if (pub.is_overdue !== undefined) return pub.is_overdue;
+    const scheduledTime = new Date(pub.scheduled_at).getTime();
+    return !isNaN(scheduledTime) && scheduledTime < Date.now();
+  };
+
   // Statistiques calculées
   const stats = {
     total: publications.length,
     drafts: publications.filter(p => p.status === 'draft').length,
-    scheduled: publications.filter(p => p.status === 'scheduled').length,
-    published: publications.filter(p => p.status === 'published').length,
-    failed: publications.filter(p => p.status === 'failed').length
+    scheduled: publications.filter(p => p.status === 'scheduled' && !isPublicationOverdue(p)).length,
+    overdue: publications.filter(p => isPublicationOverdue(p)).length,
+    published: publications.filter(p => p.status === 'published').length
+  };
+
+  // Action: Copier le texte complet (caption + hashtags)
+  const handleCopyText = async (pub: Publication) => {
+    const textToCopy = pub.copy_text || [pub.caption, pub.hashtags || pub.tags].filter(Boolean).join('\n\n') || pub.title;
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setCopiedPubId(pub.id);
+      setTimeout(() => {
+        setCopiedPubId(prev => (prev === pub.id ? null : prev));
+      }, 2000);
+    } catch (err) {
+      console.error('Erreur lors de la copie:', err);
+    }
   };
 
   // Badge Plateforme
@@ -226,8 +262,22 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
 
   // Badge Statut
   const renderStatusBadge = (pubOrStatus: Publication | PublicationStatus) => {
-    const status = typeof pubOrStatus === 'string' ? pubOrStatus : pubOrStatus.status;
-    const errorMessage = typeof pubOrStatus === 'string' ? null : pubOrStatus.error_message;
+    const isPubObject = typeof pubOrStatus !== 'string';
+    const status = isPubObject ? pubOrStatus.status : pubOrStatus;
+    const isOverdue = isPubObject ? isPublicationOverdue(pubOrStatus) : false;
+    const errorMessage = isPubObject ? pubOrStatus.error_message : null;
+
+    if (status === 'scheduled' && isOverdue) {
+      return (
+        <span
+          className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/40 shadow-sm"
+          title="L'heure de publication prévue est dépassée (à poster manuellement dès que possible)"
+        >
+          <AlertTriangle className="w-3 h-3 text-amber-400 animate-pulse" />
+          En retard
+        </span>
+      );
+    }
 
     switch (status) {
       case 'draft':
@@ -254,7 +304,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
       case 'published':
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-            <CheckCircle2 className="w-3 h-3" />
+            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
             Publiée
           </span>
         );
@@ -288,9 +338,10 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
     setCreateMode(mode);
     setFormVideoId(videos.length > 0 ? videos[0].id : '');
     setFormPlatform('tiktok');
-    setFormSocialAccountId('');
     setFormMultiPlatforms(['tiktok', 'instagram', 'youtube']);
     setFormCaption('');
+    setFormHashtags('');
+    setFormNotes('');
     setFormStatus('draft');
     setFormScheduledAt('');
     setFormCampaignId('auto');
@@ -298,9 +349,9 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
     setIsCreateModalOpen(true);
   };
 
-  // Insertion rapide de tags/mentions dans la caption
-  const insertTextToCaption = (text: string) => {
-    setFormCaption(prev => (prev ? `${prev} ${text}` : text));
+  // Insertion rapide de tags dans le champ hashtags
+  const insertTextToHashtags = (text: string) => {
+    setFormHashtags(prev => (prev ? `${prev} ${text}` : text));
   };
 
   // Soumission Création (Unitaire ou Multi-Plateformes)
@@ -327,7 +378,9 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
           body: JSON.stringify({
             video_id: formVideoId,
             platforms: formMultiPlatforms,
-            caption: formCaption,
+            caption: formCaption.trim() || undefined,
+            hashtags: formHashtags.trim() || undefined,
+            notes: formNotes.trim() || undefined,
             status: formStatus,
             scheduled_at: formScheduledAt || null,
             campaign_id: formCampaignId === 'auto' ? undefined : (formCampaignId || null)
@@ -345,8 +398,9 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
           body: JSON.stringify({
             video_id: formVideoId,
             platform: formPlatform,
-            social_account_id: formSocialAccountId || null,
-            caption: formCaption,
+            caption: formCaption.trim() || undefined,
+            hashtags: formHashtags.trim() || undefined,
+            notes: formNotes.trim() || undefined,
             status: formStatus,
             scheduled_at: formScheduledAt || null,
             campaign_id: formCampaignId === 'auto' ? undefined : (formCampaignId || null)
@@ -360,6 +414,10 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
       }
 
       setIsCreateModalOpen(false);
+      setActionFeedback({
+        type: 'success',
+        message: 'Publication(s) créée(s) avec succès pour le workflow manuel !'
+      });
       await fetchPublications();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erreur réseau';
@@ -373,11 +431,12 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
   const handleOpenEdit = (pub: Publication) => {
     setEditingPublication(pub);
     setEditPlatform(pub.platform);
-    setEditSocialAccountId(pub.social_account_id || '');
     setEditCaption(pub.caption || '');
+    setEditHashtags(pub.hashtags || pub.tags || '');
+    setEditNotes(pub.notes || '');
     setEditStatus(pub.status);
     setEditScheduledAt(pub.scheduled_at ? pub.scheduled_at.slice(0, 16) : '');
-    setEditExternalUrl(pub.external_url || pub.post_url || '');
+    setEditPostUrl(pub.post_url || pub.external_url || '');
     setFormError(null);
   };
 
@@ -395,11 +454,12 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           platform: editPlatform,
-          social_account_id: editSocialAccountId || null,
-          caption: editCaption,
+          caption: editCaption.trim() || null,
+          hashtags: editHashtags.trim() || null,
+          notes: editNotes.trim() || null,
           status: editStatus,
           scheduled_at: editScheduledAt || null,
-          external_url: editExternalUrl || null
+          post_url: editPostUrl.trim() || null
         })
       });
 
@@ -409,6 +469,10 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
       }
 
       setEditingPublication(null);
+      setActionFeedback({
+        type: 'success',
+        message: 'Publication mise à jour avec succès'
+      });
       await fetchPublications();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erreur réseau';
@@ -421,12 +485,13 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
   // Ouverture du modal de duplication vers une autre plateforme
   const handleOpenDuplicate = (pub: Publication) => {
     setDuplicatingPublication(pub);
-    // Sélectionner une plateforme par défaut différente de celle existante
     const remainingPlats: SocialPlatform[] = (['tiktok', 'instagram', 'youtube'] as SocialPlatform[]).filter(
       p => p !== pub.platform
     );
     setDuplicateTargetPlatform(remainingPlats[0] || 'instagram');
     setDuplicateCaption(pub.caption || '');
+    setDuplicateHashtags(pub.hashtags || pub.tags || '');
+    setDuplicateNotes(pub.notes || '');
     setDuplicateScheduledAt(pub.scheduled_at ? pub.scheduled_at.slice(0, 16) : '');
     setDuplicateStatus('draft');
     setFormError(null);
@@ -447,7 +512,9 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
         body: JSON.stringify({
           video_id: duplicatingPublication.video_id,
           platform: duplicateTargetPlatform,
-          caption: duplicateCaption,
+          caption: duplicateCaption.trim() || undefined,
+          hashtags: duplicateHashtags.trim() || undefined,
+          notes: duplicateNotes.trim() || undefined,
           status: duplicateStatus,
           scheduled_at: duplicateScheduledAt || null,
           campaign_id: duplicatingPublication.campaign_id
@@ -460,10 +527,60 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
       }
 
       setDuplicatingPublication(null);
+      setActionFeedback({
+        type: 'success',
+        message: `Publication dupliquée avec succès vers ${duplicateTargetPlatform.toUpperCase()} !`
+      });
       await fetchPublications();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erreur réseau';
       setFormError(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Ouverture du modal Marquer comme Publié
+  const handleOpenPublishModal = (pub: Publication) => {
+    setPublishingPublication(pub);
+    setPublishPostUrl(pub.post_url || pub.external_url || '');
+    setPublishNotes(pub.notes || '');
+    setPublishError(null);
+  };
+
+  // Soumission Marquer comme Publié
+  const handlePublishSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!publishingPublication) return;
+
+    try {
+      setSubmitting(true);
+      setPublishError(null);
+
+      const res = await fetch(`/api/publications/${publishingPublication.id}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          post_url: publishPostUrl.trim() || undefined,
+          notes: publishNotes.trim() || undefined,
+          published_at: new Date().toISOString()
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.status !== 'success') {
+        throw new Error(data.message || 'Erreur lors du marquage de la publication');
+      }
+
+      setPublishingPublication(null);
+      setActionFeedback({
+        type: 'success',
+        message: `Publication marquée comme publiée avec succès !`
+      });
+      await fetchPublications();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erreur réseau';
+      setPublishError(msg);
     } finally {
       setSubmitting(false);
     }
@@ -484,6 +601,10 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
       }
 
       setDeletingPublication(null);
+      setActionFeedback({
+        type: 'success',
+        message: 'Publication supprimée. La vidéo source reste conservée.'
+      });
       await fetchPublications();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erreur réseau';
@@ -504,10 +625,10 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
         <div>
           <h1 className="text-3xl font-heading font-bold text-ows-text-main flex items-center gap-3">
             <Send className="w-8 h-8 text-ows-accent" />
-            Publications Multi-Plateformes
+            Publications & Clipping
           </h1>
           <p className="text-ows-text-muted mt-1 text-sm font-sans">
-            Gérez chaque déclinaison sociale (TikTok, Instagram, YouTube) de vos clips de manière autonome.
+            Planifiez vos clips, copiez vos légendes en un clic, publiez manuellement et marquez l&apos;avancement.
           </p>
         </div>
 
@@ -517,7 +638,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
             className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-ows-surface-card border border-ows-border hover:border-ows-accent text-ows-text-main text-sm font-medium transition-colors"
           >
             <Layers className="w-4 h-4 text-ows-accent" />
-            Génération Multi-Réseaux
+            Déclinaison Multi-Plateformes
           </button>
 
           <button
@@ -525,15 +646,15 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
             className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-ows-accent hover:bg-ows-accent-hover text-black font-semibold text-sm transition-colors shadow-lg shadow-ows-accent/20"
           >
             <Plus className="w-4 h-4" />
-            Nouvelle Publication
+            Nouvelle Tâche de Publication
           </button>
         </div>
       </div>
 
-      {/* 2. KPIs de Synthèse */}
+      {/* 2. KPIs de Synthèse du Workflow Manuel */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <div className="p-4 rounded-xl bg-ows-surface-card border border-ows-border">
-          <p className="text-xs text-ows-text-muted uppercase tracking-wider font-semibold">Total</p>
+          <p className="text-xs text-ows-text-muted uppercase tracking-wider font-semibold">Total clips</p>
           <p className="text-2xl font-bold font-heading text-ows-text-main mt-1">{stats.total}</p>
         </div>
         <div className="p-4 rounded-xl bg-ows-surface-card border border-ows-border">
@@ -541,16 +662,21 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
           <p className="text-2xl font-bold font-heading text-ows-text-muted mt-1">{stats.drafts}</p>
         </div>
         <div className="p-4 rounded-xl bg-ows-surface-card border border-ows-border">
-          <p className="text-xs text-ows-text-muted uppercase tracking-wider font-semibold">Programmées</p>
+          <p className="text-xs text-ows-text-muted uppercase tracking-wider font-semibold">À venir</p>
           <p className="text-2xl font-bold font-heading text-ows-accent mt-1">{stats.scheduled}</p>
+        </div>
+        <div className={`p-4 rounded-xl border transition-colors ${stats.overdue > 0 ? 'bg-amber-500/10 border-amber-500/40 text-amber-400' : 'bg-ows-surface-card border-ows-border'}`}>
+          <p className="text-xs uppercase tracking-wider font-semibold flex items-center gap-1.5">
+            {stats.overdue > 0 && <AlertTriangle className="w-3.5 h-3.5 text-amber-400 animate-pulse" />}
+            En retard
+          </p>
+          <p className={`text-2xl font-bold font-heading mt-1 ${stats.overdue > 0 ? 'text-amber-400' : 'text-ows-text-subtle'}`}>
+            {stats.overdue}
+          </p>
         </div>
         <div className="p-4 rounded-xl bg-ows-surface-card border border-ows-border">
           <p className="text-xs text-ows-text-muted uppercase tracking-wider font-semibold">Publiées</p>
           <p className="text-2xl font-bold font-heading text-emerald-400 mt-1">{stats.published}</p>
-        </div>
-        <div className="p-4 rounded-xl bg-ows-surface-card border border-ows-border">
-          <p className="text-xs text-ows-text-muted uppercase tracking-wider font-semibold">Échecs</p>
-          <p className="text-2xl font-bold font-heading text-rose-400 mt-1">{stats.failed}</p>
         </div>
       </div>
 
@@ -562,7 +688,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher par vidéo, campagne, caption..."
+            placeholder="Rechercher par vidéo, campagne, hashtags, caption..."
             className="w-full pl-10 pr-4 py-2 bg-black border border-ows-border rounded-lg text-sm text-ows-text-main placeholder:text-ows-text-subtle focus:outline-none focus:border-ows-accent"
           />
         </div>
@@ -617,7 +743,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
         </div>
       )}
 
-      {/* Notification feedback après déclenchement immédiat (Phase 7) */}
+      {/* Notification feedback après action */}
       {actionFeedback && (
         <div
           className={`p-4 rounded-xl border flex items-center justify-between gap-3 text-sm animate-fade-in ${
@@ -643,7 +769,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
         </div>
       )}
 
-      {/* 4. Liste des Publications */}
+      {/* 4. Liste des Publications (Tableau Manuel) */}
       {loading ? (
         <div className="p-12 text-center text-ows-text-muted">
           <RotateCcw className="w-6 h-6 animate-spin mx-auto mb-2 text-ows-accent" />
@@ -656,7 +782,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
           </div>
           <h3 className="text-lg font-heading font-semibold text-ows-text-main">Aucune publication trouvée</h3>
           <p className="text-ows-text-muted text-sm max-w-md mx-auto mt-1 mb-6">
-            Déclinez vos vidéos sources en publications indépendantes adaptées à chaque réseau social.
+            Déclinez vos vidéos sources en tâches de publication pour TikTok, Instagram ou YouTube.
           </p>
           <button
             onClick={() => handleOpenCreateModal('single')}
@@ -674,141 +800,182 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                 <tr>
                   <th className="py-3.5 px-4 font-semibold">Vidéo Source</th>
                   <th className="py-3.5 px-4 font-semibold">Campagne</th>
-                  <th className="py-3.5 px-4 font-semibold">Plateforme & Compte</th>
+                  <th className="py-3.5 px-4 font-semibold">Plateforme</th>
                   <th className="py-3.5 px-4 font-semibold">Statut</th>
-                  <th className="py-3.5 px-4 font-semibold">Légende (Caption)</th>
-                  <th className="py-3.5 px-4 font-semibold">Programmation</th>
-                  <th className="py-3.5 px-4 font-semibold text-right">Actions</th>
+                  <th className="py-3.5 px-4 font-semibold">Contenu & Hashtags</th>
+                  <th className="py-3.5 px-4 font-semibold">Date Prévue</th>
+                  <th className="py-3.5 px-4 font-semibold text-right">Actions Manuelles</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-ows-border/60">
-                {publications.map((pub) => (
-                  <tr key={pub.id} className="hover:bg-ows-surface-1/50 transition-colors">
-                    {/* Vidéo Source */}
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-2.5 max-w-[220px]">
-                        <div className="w-8 h-8 rounded bg-black border border-ows-border flex items-center justify-center flex-shrink-0 text-ows-text-muted">
-                          <Film className="w-4 h-4" />
-                        </div>
-                        <div className="truncate">
-                          <p className="text-xs font-medium text-ows-text-main truncate" title={pub.video_original_name || pub.title}>
-                            {pub.video_original_name || pub.title}
-                          </p>
-                          <p className="text-[10px] text-ows-text-subtle font-mono truncate">
-                            {pub.video_filename || 'Vidéo liée'}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
+                {publications.map((pub) => {
+                  const overdue = isPublicationOverdue(pub);
+                  const isCopied = copiedPubId === pub.id;
+                  const displayHashtags = pub.hashtags || pub.tags;
 
-                    {/* Campagne */}
-                    <td className="py-3.5 px-4 whitespace-nowrap">
-                      {pub.campaign_name ? (
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs bg-black border border-ows-border">
-                          <span
-                            className="w-2 h-2 rounded-full"
-                            style={{ backgroundColor: pub.campaign_color || '#08EB08' }}
-                          />
-                          <span className="text-ows-text-main font-medium">{pub.campaign_name}</span>
-                        </span>
-                      ) : (
-                        <span className="text-xs text-ows-text-subtle">Sans campagne</span>
-                      )}
-                    </td>
+                  return (
+                    <tr
+                      key={pub.id}
+                      className={`hover:bg-ows-surface-1/50 transition-colors ${
+                        overdue ? 'bg-amber-500/[0.03]' : ''
+                      }`}
+                    >
+                      {/* Vidéo Source */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2.5 max-w-[200px]">
+                          <div className="w-8 h-8 rounded bg-black border border-ows-border flex items-center justify-center flex-shrink-0 text-ows-text-muted">
+                            <Film className="w-4 h-4" />
+                          </div>
+                          <div className="truncate">
+                            <p className="text-xs font-medium text-ows-text-main truncate" title={pub.video_original_name || pub.title}>
+                              {pub.video_original_name || pub.title}
+                            </p>
+                            <p className="text-[10px] text-ows-text-subtle font-mono truncate">
+                              {pub.video_filename || 'Vidéo locale'}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
 
-                    {/* Plateforme & Compte lié */}
-                    <td className="py-3.5 px-4 whitespace-nowrap">
-                      <div className="flex flex-col gap-1 items-start">
-                        {renderPlatformBadge(pub.platform)}
-                        {pub.social_account_username ? (
-                          <span
-                            className="inline-flex items-center text-[10px] text-ows-text-muted font-mono bg-black/60 px-1.5 py-0.5 rounded border border-ows-border"
-                            title={`Compte lié: @${pub.social_account_username}`}
-                          >
-                            @{pub.social_account_username}
+                      {/* Campagne */}
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        {pub.campaign_name ? (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs bg-black border border-ows-border">
+                            <span
+                              className="w-2 h-2 rounded-full"
+                              style={{ backgroundColor: pub.campaign_color || '#08EB08' }}
+                            />
+                            <span className="text-ows-text-main font-medium">{pub.campaign_name}</span>
                           </span>
                         ) : (
-                          <span className="text-[10px] text-ows-text-subtle italic">
-                            Non assigné
-                          </span>
+                          <span className="text-xs text-ows-text-subtle">Sans campagne</span>
                         )}
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Statut */}
-                    <td className="py-3.5 px-4 whitespace-nowrap">
-                      {renderStatusBadge(pub)}
-                    </td>
+                      {/* Plateforme */}
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        {renderPlatformBadge(pub.platform)}
+                      </td>
 
-                    {/* Légende / Caption */}
-                    <td className="py-3.5 px-4 max-w-xs">
-                      <p className="text-xs text-ows-text-muted line-clamp-2" title={pub.caption || pub.title}>
-                        {pub.caption || <span className="text-ows-text-subtle italic">Aucune légende</span>}
-                      </p>
-                      {pub.external_url && (
-                        <a
-                          href={pub.external_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 mt-1 text-[11px] text-ows-accent hover:underline font-mono"
-                          title="Ouvrir le post officiel dans un nouvel onglet"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          Voir le post
-                        </a>
-                      )}
-                    </td>
+                      {/* Statut (avec retard si applicable) */}
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        {renderStatusBadge(pub)}
+                      </td>
 
-                    {/* Programmation */}
-                    <td className="py-3.5 px-4 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5 text-xs text-ows-text-muted">
-                        <Clock className="w-3.5 h-3.5 text-ows-text-subtle" />
-                        <span>{formatDate(pub.scheduled_at)}</span>
-                      </div>
-                    </td>
-
-                    {/* Actions */}
-                    <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {pub.external_url && (
+                      {/* Légende, Hashtags & Notes */}
+                      <td className="py-3.5 px-4 max-w-xs">
+                        <p className="text-xs text-ows-text-main font-medium line-clamp-2" title={pub.caption || pub.title}>
+                          {pub.caption || pub.title}
+                        </p>
+                        {displayHashtags && (
+                          <p className="text-[11px] text-ows-accent/80 font-mono mt-0.5 truncate" title={displayHashtags}>
+                            {displayHashtags}
+                          </p>
+                        )}
+                        {pub.notes && (
+                          <p className="text-[11px] text-ows-text-subtle italic flex items-center gap-1 mt-1 truncate" title={pub.notes}>
+                            <FileText className="w-3 h-3 text-ows-text-subtle flex-shrink-0" />
+                            {pub.notes}
+                          </p>
+                        )}
+                        {(pub.post_url || pub.external_url) && (
                           <a
-                            href={pub.external_url}
+                            href={pub.post_url || pub.external_url || '#'}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="p-1.5 text-ows-accent hover:text-ows-accent-hover hover:bg-ows-accent/10 rounded transition-colors"
-                            title="Voir la publication externe (nouvel onglet)"
+                            className="inline-flex items-center gap-1 mt-1.5 text-[11px] text-emerald-400 hover:underline font-mono"
+                            title="Ouvrir le post officiel sur le réseau social"
                           >
-                            <ExternalLink className="w-4 h-4" />
+                            <ExternalLink className="w-3 h-3" />
+                            Lien du post publié
                           </a>
                         )}
+                      </td>
 
-                        <button
-                          onClick={() => handleOpenDuplicate(pub)}
-                          className="p-1.5 text-ows-text-subtle hover:text-ows-accent transition-colors"
-                          title="Dupliquer vers un autre réseau"
-                        >
-                          <Copy className="w-4 h-4" />
-                        </button>
+                      {/* Date de programmation */}
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <div className="flex flex-col gap-0.5">
+                          <div className={`flex items-center gap-1.5 text-xs ${overdue ? 'text-amber-400 font-semibold' : 'text-ows-text-muted'}`}>
+                            <Clock className={`w-3.5 h-3.5 ${overdue ? 'text-amber-400' : 'text-ows-text-subtle'}`} />
+                            <span>{formatDate(pub.scheduled_at)}</span>
+                          </div>
+                          {pub.published_at && (
+                            <span className="text-[10px] text-emerald-400/80 font-mono">
+                              Publié le {formatDate(pub.published_at)}
+                            </span>
+                          )}
+                        </div>
+                      </td>
 
-                        <button
-                          onClick={() => handleOpenEdit(pub)}
-                          className="p-1.5 text-ows-text-subtle hover:text-ows-text-main transition-colors"
-                          title="Modifier la publication"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
+                      {/* Actions Manuelles */}
+                      <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* 1. Bouton Copier le Texte (Action Clé pour poster manuellement) */}
+                          <button
+                            onClick={() => handleCopyText(pub)}
+                            className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium transition-all ${
+                              isCopied
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                                : 'bg-ows-surface-1 border border-ows-border hover:border-ows-accent text-ows-text-main'
+                            }`}
+                            title="Copier la légende et les hashtags pour coller dans TikTok/Instagram/YouTube"
+                          >
+                            {isCopied ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>Copié !</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5 text-ows-accent" />
+                                <span>Copier</span>
+                              </>
+                            )}
+                          </button>
 
-                        <button
-                          onClick={() => setDeletingPublication(pub)}
-                          className="p-1.5 text-ows-text-subtle hover:text-rose-400 transition-colors"
-                          title="Supprimer la publication"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {/* 2. Bouton Marquer comme Publié */}
+                          {pub.status !== 'published' && (
+                            <button
+                              onClick={() => handleOpenPublishModal(pub)}
+                              className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                              title="Marquer cette tâche comme publiée manuellement"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Publier</span>
+                            </button>
+                          )}
+
+                          {/* 3. Dupliquer vers autre plateforme */}
+                          <button
+                            onClick={() => handleOpenDuplicate(pub)}
+                            className="p-1.5 text-ows-text-subtle hover:text-ows-accent transition-colors rounded hover:bg-ows-surface-1"
+                            title="Décliner pour un autre réseau"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </button>
+
+                          {/* 4. Modifier */}
+                          <button
+                            onClick={() => handleOpenEdit(pub)}
+                            className="p-1.5 text-ows-text-subtle hover:text-ows-text-main transition-colors rounded hover:bg-ows-surface-1"
+                            title="Modifier les notes ou la programmation"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+
+                          {/* 5. Supprimer */}
+                          <button
+                            onClick={() => setDeletingPublication(pub)}
+                            className="p-1.5 text-ows-text-subtle hover:text-rose-400 transition-colors rounded hover:bg-ows-surface-1"
+                            title="Supprimer cette publication"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -829,12 +996,12 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                 </div>
                 <div>
                   <h2 className="text-lg font-heading font-semibold text-ows-text-main">
-                    {createMode === 'multi' ? 'Génération Multi-Réseaux' : 'Nouvelle Publication'}
+                    {createMode === 'multi' ? 'Déclinaison Multi-Plateformes' : 'Nouvelle Publication Manuelle'}
                   </h2>
                   <p className="text-xs text-ows-text-muted">
                     {createMode === 'multi'
-                      ? 'Créez instantanément des déclinaisons autonomes pour plusieurs plateformes'
-                      : 'Préparez une publication pour un réseau spécifique'}
+                      ? 'Créez les tâches de publication pour plusieurs réseaux en une seule fois'
+                      : 'Préparez votre clip pour un réseau social spécifique'}
                   </p>
                 </div>
               </div>
@@ -847,7 +1014,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
             </div>
 
             {/* Form */}
-            <form onSubmit={handleCreateSubmit} className="p-6 space-y-5">
+            <form onSubmit={handleCreateSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
               {formError && (
                 <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -858,11 +1025,11 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
               {/* 1. Sélection Vidéo Source */}
               <div>
                 <label className="block text-xs font-medium text-ows-text-muted mb-1.5">
-                  Vidéo Source <span className="text-ows-accent">*</span>
+                  Vidéo Source Locale <span className="text-ows-accent">*</span>
                 </label>
                 {videos.length === 0 ? (
                   <div className="p-3 bg-black border border-rose-500/30 rounded-lg text-xs text-rose-400">
-                    Aucune vidéo disponible dans la vidéothèque. Veuillez d&apos;abord importer une vidéo dans l&apos;onglet Vidéothèque.
+                    Aucune vidéo disponible. Importez d&apos;abord une vidéo dans l&apos;onglet Vidéothèque.
                   </div>
                 ) : (
                   <select
@@ -884,7 +1051,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
               {createMode === 'multi' ? (
                 <div>
                   <label className="block text-xs font-medium text-ows-text-muted mb-2">
-                    Plateformes cibles (des publications distinctes seront créées)
+                    Plateformes cibles (une tâche par plateforme sélectionnée)
                   </label>
                   <div className="grid grid-cols-3 gap-3">
                     {(['tiktok', 'instagram', 'youtube'] as SocialPlatform[]).map(plat => {
@@ -940,54 +1107,63 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                 </div>
               )}
 
-              {/* 3. Caption / Légende */}
+              {/* 3. Légende / Caption */}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-medium text-ows-text-muted">
-                    Légende & Hashtags
-                  </label>
-                  {videoCampaign && (
-                    <span className="text-[11px] text-ows-text-subtle">
-                      Campagne liée : <strong className="text-ows-text-main">{videoCampaign.name}</strong>
-                    </span>
-                  )}
-                </div>
-
+                <label className="block text-xs font-medium text-ows-text-muted mb-1.5">
+                  Légende du clip
+                </label>
                 <textarea
                   value={formCaption}
                   onChange={(e) => setFormCaption(e.target.value)}
-                  placeholder="Écrivez le texte de votre clip, accroche, hashtags..."
-                  rows={4}
+                  placeholder="Accroche percutante pour votre audience..."
+                  rows={3}
                   className="w-full bg-black border border-ows-border rounded-lg p-3 text-sm text-ows-text-main placeholder:text-ows-text-subtle focus:outline-none focus:border-ows-accent"
                 />
-
-                {/* Boutons d'insertion rapide de la campagne */}
-                {videoCampaign && (videoCampaign.hashtags || videoCampaign.mentions) && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {videoCampaign.hashtags && (
-                      <button
-                        type="button"
-                        onClick={() => insertTextToCaption(videoCampaign.hashtags || '')}
-                        className="px-2 py-0.5 rounded text-[11px] bg-ows-surface-1 border border-ows-border hover:border-ows-accent text-ows-text-muted transition-colors"
-                      >
-                        + Insérer tags campagne
-                      </button>
-                    )}
-                    {videoCampaign.mentions && (
-                      <button
-                        type="button"
-                        onClick={() => insertTextToCaption(videoCampaign.mentions || '')}
-                        className="px-2 py-0.5 rounded text-[11px] bg-ows-surface-1 border border-ows-border hover:border-ows-accent text-ows-text-muted transition-colors"
-                      >
-                        + Insérer mentions campagne
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
 
-              {/* 4. Statut & Date de Programmation */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* 4. Hashtags */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-medium text-ows-text-muted flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-ows-accent" />
+                    Hashtags
+                  </label>
+                  {videoCampaign?.hashtags && (
+                    <button
+                      type="button"
+                      onClick={() => insertTextToHashtags(videoCampaign.hashtags || '')}
+                      className="text-[11px] text-ows-accent hover:underline"
+                    >
+                      + Insérer les tags de la campagne
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  value={formHashtags}
+                  onChange={(e) => setFormHashtags(e.target.value)}
+                  placeholder="#clipping #viral #shorts"
+                  className="w-full bg-black border border-ows-border rounded-lg px-3 py-2 text-sm text-ows-text-main placeholder:text-ows-text-subtle focus:outline-none focus:border-ows-accent font-mono text-xs"
+                />
+              </div>
+
+              {/* 5. Notes manuelles */}
+              <div>
+                <label className="block text-xs font-medium text-ows-text-muted mb-1.5 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-ows-text-subtle" />
+                  Notes de publication (idées, heure optimale, consigne perso)
+                </label>
+                <input
+                  type="text"
+                  value={formNotes}
+                  onChange={(e) => setFormNotes(e.target.value)}
+                  placeholder="Ex: Utiliser le son tendance du moment sur TikTok"
+                  className="w-full bg-black border border-ows-border rounded-lg px-3 py-2 text-xs text-ows-text-main placeholder:text-ows-text-subtle focus:outline-none focus:border-ows-accent"
+                />
+              </div>
+
+              {/* 6. Statut & Date de Programmation */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                 <div>
                   <label className="block text-xs font-medium text-ows-text-muted mb-1.5">
                     Statut initial
@@ -997,15 +1173,15 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                     onChange={(e) => setFormStatus(e.target.value as PublicationStatus)}
                     className="w-full bg-black border border-ows-border rounded-lg px-3 py-2 text-sm text-ows-text-main focus:outline-none focus:border-ows-accent"
                   >
-                    <option value="draft">Brouillon</option>
-                    <option value="scheduled">Programmée</option>
+                    <option value="draft">Brouillon (à faire plus tard)</option>
+                    <option value="scheduled">Programmée (dans le calendrier)</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-xs font-medium text-ows-text-muted mb-1.5 flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5 text-ows-accent" />
-                    Date et heure de publication
+                    Date et heure prévue
                   </label>
                   <input
                     type="datetime-local"
@@ -1057,7 +1233,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                   <h2 className="text-lg font-heading font-semibold text-ows-text-main">
                     Modifier la Publication
                   </h2>
-                  <p className="text-xs text-ows-text-muted">
+                  <p className="text-xs text-ows-text-muted truncate max-w-[280px]">
                     {editingPublication.video_original_name || editingPublication.title}
                   </p>
                 </div>
@@ -1070,7 +1246,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
               </button>
             </div>
 
-            <form onSubmit={handleEditSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleEditSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
               {formError && (
                 <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -1106,7 +1282,6 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                   >
                     <option value="draft">Brouillon</option>
                     <option value="scheduled">Programmée</option>
-                    <option value="publishing">En cours</option>
                     <option value="published">Publiée</option>
                     <option value="failed">Échec</option>
                     <option value="cancelled">Annulée</option>
@@ -1122,8 +1297,38 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                 <textarea
                   value={editCaption}
                   onChange={(e) => setEditCaption(e.target.value)}
-                  rows={4}
+                  rows={3}
                   className="w-full bg-black border border-ows-border rounded-lg p-3 text-sm text-ows-text-main focus:outline-none focus:border-ows-accent"
+                />
+              </div>
+
+              {/* Hashtags */}
+              <div>
+                <label className="block text-xs font-medium text-ows-text-muted mb-1.5 flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-ows-accent" />
+                  Hashtags
+                </label>
+                <input
+                  type="text"
+                  value={editHashtags}
+                  onChange={(e) => setEditHashtags(e.target.value)}
+                  placeholder="#clipping #viral"
+                  className="w-full bg-black border border-ows-border rounded-lg px-3 py-2 text-sm text-ows-text-main focus:outline-none focus:border-ows-accent font-mono text-xs"
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-medium text-ows-text-muted mb-1.5 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-ows-text-subtle" />
+                  Notes manuelles
+                </label>
+                <input
+                  type="text"
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="Notes et consignes"
+                  className="w-full bg-black border border-ows-border rounded-lg px-3 py-2 text-xs text-ows-text-main focus:outline-none focus:border-ows-accent"
                 />
               </div>
 
@@ -1141,15 +1346,15 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                 />
               </div>
 
-              {/* URL Externe (si publiée) */}
+              {/* URL du post officiel */}
               <div>
                 <label className="block text-xs font-medium text-ows-text-muted mb-1.5">
-                  URL de publication externe (optionnelle)
+                  Lien vers la publication en ligne (optionnel)
                 </label>
                 <input
                   type="url"
-                  value={editExternalUrl}
-                  onChange={(e) => setEditExternalUrl(e.target.value)}
+                  value={editPostUrl}
+                  onChange={(e) => setEditPostUrl(e.target.value)}
                   placeholder="https://www.tiktok.com/@clip/video/..."
                   className="w-full bg-black border border-ows-border rounded-lg px-3 py-2 text-sm text-ows-text-main focus:outline-none focus:border-ows-accent font-mono text-xs"
                 />
@@ -1189,7 +1394,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                 </div>
                 <div>
                   <h2 className="text-lg font-heading font-semibold text-ows-text-main">
-                    Dupliquer vers un autre réseau
+                    Dupliquer vers une autre plateforme
                   </h2>
                   <p className="text-xs text-ows-text-muted">
                     Créera une publication indépendante basée sur ce clip
@@ -1231,13 +1436,40 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
               {/* Caption */}
               <div>
                 <label className="block text-xs font-medium text-ows-text-muted mb-1.5">
-                  Légende personnalisée pour ce réseau
+                  Légende
                 </label>
                 <textarea
                   value={duplicateCaption}
                   onChange={(e) => setDuplicateCaption(e.target.value)}
-                  rows={4}
+                  rows={3}
                   className="w-full bg-black border border-ows-border rounded-lg p-3 text-sm text-ows-text-main focus:outline-none focus:border-ows-accent"
+                />
+              </div>
+
+              {/* Hashtags */}
+              <div>
+                <label className="block text-xs font-medium text-ows-text-muted mb-1.5">
+                  Hashtags
+                </label>
+                <input
+                  type="text"
+                  value={duplicateHashtags}
+                  onChange={(e) => setDuplicateHashtags(e.target.value)}
+                  placeholder="#clipping #viral"
+                  className="w-full bg-black border border-ows-border rounded-lg px-3 py-2 text-sm text-ows-text-main focus:outline-none focus:border-ows-accent font-mono text-xs"
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-medium text-ows-text-muted mb-1.5">
+                  Notes
+                </label>
+                <input
+                  type="text"
+                  value={duplicateNotes}
+                  onChange={(e) => setDuplicateNotes(e.target.value)}
+                  className="w-full bg-black border border-ows-border rounded-lg px-3 py-2 text-xs text-ows-text-main focus:outline-none focus:border-ows-accent"
                 />
               </div>
 
@@ -1276,7 +1508,101 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 4: CONFIRMATION DE SUPPRESSION */}
+      {/* MODAL 4: MARQUER COMME PUBLIÉ (Workflow Manuel) */}
+      {/* ========================================================================= */}
+      {publishingPublication && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-ows-surface-card border border-emerald-500/30 rounded-2xl shadow-2xl overflow-hidden animate-scale-in">
+            <div className="flex items-center justify-between p-6 border-b border-ows-border">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-heading font-semibold text-ows-text-main">
+                    Confirmer la Publication
+                  </h2>
+                  <p className="text-xs text-ows-text-muted">
+                    Marquer ce clip comme posté sur <strong className="text-ows-text-main uppercase">{publishingPublication.platform}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPublishingPublication(null)}
+                className="p-2 text-ows-text-muted hover:text-ows-text-main rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handlePublishSubmit} className="p-6 space-y-4">
+              {publishError && (
+                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{publishError}</span>
+                </div>
+              )}
+
+              <div className="p-3 bg-black rounded-lg border border-ows-border text-xs text-ows-text-muted">
+                <p className="text-ows-text-main font-medium truncate mb-1">
+                  {publishingPublication.video_original_name || publishingPublication.title}
+                </p>
+                <p className="text-[11px] text-ows-text-subtle line-clamp-2">
+                  {publishingPublication.caption || 'Sans légende'}
+                </p>
+              </div>
+
+              {/* URL du post (optionnel) */}
+              <div>
+                <label className="block text-xs font-medium text-ows-text-muted mb-1.5">
+                  Lien vers le post en ligne (optionnel)
+                </label>
+                <input
+                  type="url"
+                  value={publishPostUrl}
+                  onChange={(e) => setPublishPostUrl(e.target.value)}
+                  placeholder="https://www.tiktok.com/@... ou https://instagram.com/p/..."
+                  className="w-full bg-black border border-ows-border rounded-lg px-3 py-2 text-sm text-ows-text-main placeholder:text-ows-text-subtle focus:outline-none focus:border-ows-accent font-mono text-xs"
+                />
+              </div>
+
+              {/* Notes d'exécution (optionnel) */}
+              <div>
+                <label className="block text-xs font-medium text-ows-text-muted mb-1.5">
+                  Notes de publication (optionnel)
+                </label>
+                <input
+                  type="text"
+                  value={publishNotes}
+                  onChange={(e) => setPublishNotes(e.target.value)}
+                  placeholder="Ex: Posté à l'heure, bon démarrage des vues"
+                  className="w-full bg-black border border-ows-border rounded-lg px-3 py-2 text-xs text-ows-text-main placeholder:text-ows-text-subtle focus:outline-none focus:border-ows-accent"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-ows-border">
+                <button
+                  type="button"
+                  onClick={() => setPublishingPublication(null)}
+                  className="px-4 py-2 text-sm text-ows-text-muted hover:text-ows-text-main"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-semibold text-sm transition-colors shadow-lg shadow-emerald-500/20"
+                >
+                  {submitting ? 'Validation...' : 'Confirmer la publication'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 5: CONFIRMATION DE SUPPRESSION */}
       {/* ========================================================================= */}
       {deletingPublication && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -1294,7 +1620,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
               <strong className="text-ows-text-main capitalize">{deletingPublication.platform}</strong>.
               <br />
               <span className="text-ows-accent mt-2 inline-block font-medium">
-                La vidéo source et les éventuelles autres publications ne seront pas affectées.
+                La vidéo source et les éventuelles autres déclinaisons ne seront pas affectées.
               </span>
             </p>
 

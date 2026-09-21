@@ -5,13 +5,18 @@ import {
   ChevronRight,
   Clock,
   Plus,
-  Edit3,
   Film,
   RotateCcw,
   AlertCircle,
   X,
   CalendarDays,
-  ExternalLink
+  ExternalLink,
+  Copy,
+  Check,
+  CheckCircle2,
+  AlertTriangle,
+  Tag,
+  FileText
 } from 'lucide-react';
 import { Publication, Campaign, SocialPlatform, PublicationStatus } from '../types/domain';
 import { NavTab } from '../components/layout/Sidebar';
@@ -50,6 +55,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [copiedPubId, setCopiedPubId] = useState<string | null>(null);
 
   // État de Navigation Calendaire
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
@@ -65,12 +71,14 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
   const [isQuickScheduleOpen, setIsQuickScheduleOpen] = useState<boolean>(false);
   const [targetDateForSchedule, setTargetDateForSchedule] = useState<string>('');
 
-  // Formulaire d'Édition / Reprogrammation
+  // Formulaire d'Édition / Consultation Manuelle
   const [editScheduledAt, setEditScheduledAt] = useState<string>('');
   const [editStatus, setEditStatus] = useState<PublicationStatus>('scheduled');
   const [editCaption, setEditCaption] = useState<string>('');
+  const [editHashtags, setEditHashtags] = useState<string>('');
+  const [editNotes, setEditNotes] = useState<string>('');
   const [editPlatform, setEditPlatform] = useState<SocialPlatform>('tiktok');
-  const [editExternalUrl, setEditExternalUrl] = useState<string>('');
+  const [editPostUrl, setEditPostUrl] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
@@ -100,7 +108,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
       if (unscheduledRes.ok) {
         const uData = await unscheduledRes.json();
         if (uData.status === 'success') {
-          // Filtrer ceux qui n'ont réellement pas de date programmée
           const drafts = (uData.publications || []).filter(
             (p: Publication) => !p.scheduled_at || p.scheduled_at.trim() === ''
           );
@@ -133,15 +140,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
     }).format(date);
   };
 
-  const formatDayHeader = (date: Date) => {
-    return new Intl.DateTimeFormat('fr-FR', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      timeZone: activeTimezone || 'Africa/Bamako'
-    }).format(date);
-  };
-
   const formatEventTime = (dateStr?: string | null) => {
     if (!dateStr) return '';
     try {
@@ -156,18 +154,27 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
     }
   };
 
+  // Détection du retard
+  const isPublicationOverdue = (pub: Publication): boolean => {
+    if (pub.status !== 'scheduled' || !pub.scheduled_at) return false;
+    if (pub.is_overdue !== undefined) return pub.is_overdue;
+    const t = new Date(pub.scheduled_at).getTime();
+    return !isNaN(t) && t < Date.now();
+  };
+
   // Clé de date normalisée YYYY-MM-DD
   const getDateKey = (d: Date | string): string => {
     const dateObj = typeof d === 'string' ? new Date(d) : d;
     if (isNaN(dateObj.getTime())) return '';
-    const parts = new Intl.DateTimeFormat('fr-CA', {
+    return new Intl.DateTimeFormat('fr-CA', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
       timeZone: activeTimezone || 'Africa/Bamako'
     }).format(dateObj);
-    return parts; // Format YYYY-MM-DD
   };
+
+  const todayKey = useMemo(() => getDateKey(new Date()), [activeTimezone]);
 
   // Filtrage des publications selon les filtres actifs
   const filteredPublications = useMemo(() => {
@@ -192,7 +199,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
       if (!map[key]) map[key] = [];
       map[key].push(pub);
     }
-    // Tri chronologique à l'intérieur de chaque jour
     for (const key in map) {
       map[key].sort((a, b) => {
         const tA = a.scheduled_at ? new Date(a.scheduled_at).getTime() : 0;
@@ -202,6 +208,25 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
     }
     return map;
   }, [filteredPublications, activeTimezone]);
+
+  // Publications prévues aujourd'hui
+  const todaysPublications = useMemo(() => {
+    return publicationsByDate[todayKey] || [];
+  }, [publicationsByDate, todayKey]);
+
+  // Action : Copier le texte
+  const handleCopyText = async (pub: Publication) => {
+    const textToCopy = pub.copy_text || [pub.caption, pub.hashtags || pub.tags].filter(Boolean).join('\n\n') || pub.title;
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setCopiedPubId(pub.id);
+      setTimeout(() => {
+        setCopiedPubId(prev => (prev === pub.id ? null : prev));
+      }, 2000);
+    } catch (err) {
+      console.error('Erreur copie:', err);
+    }
+  };
 
   // Navigation Temporelle
   const handlePrev = () => {
@@ -241,73 +266,72 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
 
-    // Premier jour du mois
     const firstDayOfMonth = new Date(year, month, 1);
-    // Dernier jour du mois
     const lastDayOfMonth = new Date(year, month + 1, 0);
 
-    // Jour de la semaine du 1er du mois (0 = Dimanche, 1 = Lundi, ...)
-    let startDayOfWeek = firstDayOfMonth.getDay();
-    // Adapter pour commencer le Lundi (Lundi = 0, Dimanche = 6)
-    startDayOfWeek = startDayOfWeek === 0 ? 6 : startDayOfWeek - 1;
+    let startDayOfWeek = firstDayOfMonth.getDay() - 1; // 0 = Lundi
+    if (startDayOfWeek === -1) startDayOfWeek = 6;
 
     const days: Array<{ date: Date; isCurrentMonth: boolean; key: string }> = [];
 
-    // Jours du mois précédent (padding début)
+    // Jours du mois précédent pour combler la première semaine
     const prevMonthLastDay = new Date(year, month, 0).getDate();
     for (let i = startDayOfWeek - 1; i >= 0; i--) {
-      const date = new Date(year, month - 1, prevMonthLastDay - i);
-      days.push({ date, isCurrentMonth: false, key: getDateKey(date) });
+      const d = new Date(year, month - 1, prevMonthLastDay - i);
+      days.push({ date: d, isCurrentMonth: false, key: getDateKey(d) });
     }
 
     // Jours du mois en cours
-    for (let d = 1; d <= lastDayOfMonth.getDate(); d++) {
-      const date = new Date(year, month, d);
-      days.push({ date, isCurrentMonth: true, key: getDateKey(date) });
+    for (let i = 1; i <= lastDayOfMonth.getDate(); i++) {
+      const d = new Date(year, month, i);
+      days.push({ date: d, isCurrentMonth: true, key: getDateKey(d) });
     }
 
-    // Jours du mois suivant (padding fin pour compléter les semaines de 7 jours)
+    // Jours du mois suivant pour finir la grille (multiples de 7)
     const remaining = 7 - (days.length % 7);
     if (remaining < 7) {
-      for (let d = 1; d <= remaining; d++) {
-        const date = new Date(year, month + 1, d);
-        days.push({ date, isCurrentMonth: false, key: getDateKey(date) });
+      for (let i = 1; i <= remaining; i++) {
+        const d = new Date(year, month + 1, i);
+        days.push({ date: d, isCurrentMonth: false, key: getDateKey(d) });
       }
     }
 
     return days;
   }, [currentDate, activeTimezone]);
 
-  // Calcul des Jours de la Semaine Active
+  // Jours de la semaine sélectionnée
   const weekDays = useMemo(() => {
-    const d = new Date(currentDate);
-    let dayOfWeek = d.getDay();
-    dayOfWeek = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Lundi = 0
-    d.setDate(d.getDate() - dayOfWeek); // Se positionner sur le lundi de la semaine
+    const curr = new Date(currentDate);
+    const day = curr.getDay();
+    const diff = curr.getDate() - day + (day === 0 ? -6 : 1); // Lundi de la semaine
+    const monday = new Date(curr.setDate(diff));
 
-    const days: Array<{ date: Date; key: string }> = [];
+    const days = [];
     for (let i = 0; i < 7; i++) {
-      const dayDate = new Date(d);
-      dayDate.setDate(d.getDate() + i);
-      days.push({ date: dayDate, key: getDateKey(dayDate) });
+      const next = new Date(monday);
+      next.setDate(monday.getDate() + i);
+      days.push({
+        date: next,
+        key: getDateKey(next)
+      });
     }
     return days;
   }, [currentDate, activeTimezone]);
 
-  const todayKey = getDateKey(new Date());
-
-  // Ouverture du modal d'édition
+  // Ouverture du modal d'édition/détail
   const handleOpenEdit = (pub: Publication) => {
     setSelectedPublication(pub);
     setEditScheduledAt(pub.scheduled_at ? pub.scheduled_at.slice(0, 16) : '');
     setEditStatus(pub.status);
     setEditCaption(pub.caption || '');
+    setEditHashtags(pub.hashtags || pub.tags || '');
+    setEditNotes(pub.notes || '');
     setEditPlatform(pub.platform);
-    setEditExternalUrl(pub.external_url || pub.post_url || '');
+    setEditPostUrl(pub.post_url || pub.external_url || '');
     setModalError(null);
   };
 
-  // Soumission de la mise à jour / reprogrammation manuelle
+  // Soumission Modification
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPublication) return;
@@ -320,11 +344,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          scheduled_at: editScheduledAt ? new Date(editScheduledAt).toISOString() : null,
+          scheduled_at: editScheduledAt || null,
           status: editStatus,
-          caption: editCaption,
+          caption: editCaption.trim() || null,
+          hashtags: editHashtags.trim() || null,
+          notes: editNotes.trim() || null,
           platform: editPlatform,
-          external_url: editExternalUrl || null
+          post_url: editPostUrl.trim() || null
         })
       });
 
@@ -343,7 +369,40 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
     }
   };
 
-  // Déprogrammation manuelle (retirer du calendrier)
+  // Action directe : Marquer comme publié depuis le calendrier
+  const handleMarkAsPublishedFromModal = async () => {
+    if (!selectedPublication) return;
+
+    try {
+      setSubmitting(true);
+      setModalError(null);
+
+      const res = await fetch(`/api/publications/${selectedPublication.id}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          post_url: editPostUrl.trim() || undefined,
+          notes: editNotes.trim() || undefined,
+          published_at: new Date().toISOString()
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.status !== 'success') {
+        throw new Error(data.message || 'Erreur lors du marquage de la publication');
+      }
+
+      setSelectedPublication(null);
+      await fetchCalendarData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erreur réseau';
+      setModalError(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Déprogrammer (remettre en brouillon)
   const handleUnschedule = async () => {
     if (!selectedPublication) return;
 
@@ -373,7 +432,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
     }
   };
 
-  // Ouverture du modal de planification rapide sur un jour
+  // Planification rapide
   const handleOpenQuickSchedule = (dateKey: string) => {
     setTargetDateForSchedule(dateKey);
     setQuickTime('14:00');
@@ -382,7 +441,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
     setIsQuickScheduleOpen(true);
   };
 
-  // Soumission planification rapide
   const handleQuickScheduleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickPubId || !targetDateForSchedule) return;
@@ -417,7 +475,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
     }
   };
 
-  // Rendu de l'icône plateforme
+  // Rendu icône plateforme
   const renderPlatformIcon = (platform: SocialPlatform) => {
     switch (platform) {
       case 'tiktok':
@@ -431,22 +489,27 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
     }
   };
 
-  // Badge Statut sobre
-  const renderStatusDot = (status: PublicationStatus) => {
-    switch (status) {
-      case 'scheduled':
-        return <span className="w-2 h-2 rounded-full bg-[#08EB08] flex-shrink-0 animate-pulse" title="Programmée" />;
-      case 'published':
-        return <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" title="Publiée" />;
-      case 'publishing':
-        return <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" title="En cours" />;
-      case 'failed':
-        return <span className="w-2 h-2 rounded-full bg-rose-500 flex-shrink-0" title="Échec" />;
-      case 'cancelled':
-        return <span className="w-2 h-2 rounded-full bg-zinc-500 flex-shrink-0" title="Annulée" />;
-      default:
-        return <span className="w-2 h-2 rounded-full bg-zinc-600 flex-shrink-0" title="Brouillon" />;
+  // Rendu de la pastille de statut dans le calendrier
+  const renderStatusDot = (pub: Publication) => {
+    const overdue = isPublicationOverdue(pub);
+    if (pub.status === 'published') {
+      return (
+        <span title="Publiée manuellement" className="flex items-center">
+          <CheckCircle2 className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+        </span>
+      );
     }
+    if (pub.status === 'scheduled' && overdue) {
+      return (
+        <span title="En retard !" className="flex items-center">
+          <AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0 animate-pulse" />
+        </span>
+      );
+    }
+    if (pub.status === 'scheduled') {
+      return <span className="w-2 h-2 rounded-full bg-[#08EB08] flex-shrink-0 animate-pulse" title="Programmée" />;
+    }
+    return <span className="w-2 h-2 rounded-full bg-zinc-600 flex-shrink-0" title={pub.status} />;
   };
 
   const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
@@ -458,18 +521,18 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
         <div>
           <h1 className="text-3xl font-heading font-bold text-ows-text-main flex items-center gap-3">
             <CalendarIcon className="w-8 h-8 text-ows-accent" />
-            Calendrier de Programmation
+            Calendrier de Clipping
           </h1>
           <p className="text-ows-text-muted mt-1 text-sm font-sans">
-            Visualisez et ajustez le planning de publication de vos clips multi-plateformes ({filteredPublications.length} publication(s) programmée(s)).
+            Visualisez vos publications quotidiennes, identifiez vos retards et marquez vos publications réalisées.
           </p>
         </div>
 
-        {/* Bouton d'action rapide */}
+        {/* Action rapide */}
         <div className="flex items-center gap-3">
           {unscheduledPubs.length > 0 && (
             <button
-              onClick={() => handleOpenQuickSchedule(getDateKey(new Date()))}
+              onClick={() => handleOpenQuickSchedule(todayKey)}
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-ows-surface-card border border-ows-border hover:border-ows-accent text-ows-text-main text-sm font-medium transition-colors"
             >
               <CalendarDays className="w-4 h-4 text-ows-accent" />
@@ -483,13 +546,58 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-ows-accent hover:bg-ows-accent-hover text-black font-semibold text-sm transition-colors shadow-lg shadow-ows-accent/20"
             >
               <Plus className="w-4 h-4" />
-              Créer une Publication
+              Nouvelle Tâche
             </button>
           )}
         </div>
       </div>
 
-      {/* 2. Contrôles de Navigation Temporelle & Sélecteur de Vues */}
+      {/* 2. Bannière « Aujourd'hui à poster » */}
+      <div className="p-4 rounded-xl bg-ows-surface-card border border-ows-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-ows-accent/10 border border-ows-accent/20 flex items-center justify-center text-ows-accent flex-shrink-0">
+            <Clock className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-sm font-heading font-semibold text-ows-text-main">
+              À poster aujourd&apos;hui ({todaysPublications.length} clip{todaysPublications.length > 1 ? 's' : ''})
+            </h2>
+            <p className="text-xs text-ows-text-muted">
+              {todaysPublications.filter(p => p.status === 'published').length} publié(s),{' '}
+              {todaysPublications.filter(p => p.status !== 'published').length} restant(s) à poster manuellement
+            </p>
+          </div>
+        </div>
+
+        {todaysPublications.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {todaysPublications.map(pub => {
+              const overdue = isPublicationOverdue(pub);
+              const isPublished = pub.status === 'published';
+              return (
+                <button
+                  key={pub.id}
+                  onClick={() => handleOpenEdit(pub)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                    isPublished
+                      ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-400 line-through'
+                      : overdue
+                      ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 font-semibold animate-pulse'
+                      : 'bg-black border-ows-border hover:border-ows-accent text-ows-text-main'
+                  }`}
+                  title={`${pub.caption || pub.title} - ${pub.platform}`}
+                >
+                  {renderPlatformIcon(pub.platform)}
+                  <span className="font-mono text-[10px]">{formatEventTime(pub.scheduled_at)}</span>
+                  <span className="truncate max-w-[100px]">{pub.campaign_name || pub.title}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* 3. Contrôles de Navigation Temporelle & Sélecteur de Vues */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 rounded-xl bg-ows-surface-card border border-ows-border">
         {/* Navigation Mois / Année */}
         <div className="flex items-center gap-3">
@@ -499,11 +607,11 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
               className="p-1.5 text-ows-text-muted hover:text-ows-text-main rounded-md hover:bg-ows-surface-1 transition-colors"
               title="Précédent"
             >
-              <ChevronLeft className="w-5 h-5" />
+              <ChevronLeft className="w-4 h-4" />
             </button>
             <button
               onClick={handleToday}
-              className="px-3 py-1 text-xs font-semibold text-ows-text-main hover:text-ows-accent transition-colors"
+              className="px-2.5 py-1 text-xs font-medium text-ows-text-muted hover:text-ows-text-main rounded-md hover:bg-ows-surface-1 transition-colors"
             >
               Aujourd&apos;hui
             </button>
@@ -512,22 +620,22 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
               className="p-1.5 text-ows-text-muted hover:text-ows-text-main rounded-md hover:bg-ows-surface-1 transition-colors"
               title="Suivant"
             >
-              <ChevronRight className="w-5 h-5" />
+              <ChevronRight className="w-4 h-4" />
             </button>
           </div>
 
-          <h2 className="text-xl font-heading font-bold text-ows-text-main capitalize tracking-wide">
+          <span className="text-base font-heading font-bold text-ows-text-main capitalize">
             {formatMonthTitle(currentDate)}
-          </h2>
+          </span>
         </div>
 
-        {/* Sélecteur de Vues (Mois / Semaine / Jour) */}
-        <div className="flex items-center gap-1 bg-black border border-ows-border rounded-lg p-1 self-start sm:self-auto">
+        {/* Sélecteur de mode de vue (Mois / Semaine / Jour) */}
+        <div className="flex items-center bg-black border border-ows-border rounded-lg p-1">
           <button
             onClick={() => setViewMode('month')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
               viewMode === 'month'
-                ? 'bg-ows-accent text-black shadow-sm'
+                ? 'bg-ows-accent text-black font-semibold shadow-sm'
                 : 'text-ows-text-muted hover:text-ows-text-main'
             }`}
           >
@@ -535,9 +643,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
           </button>
           <button
             onClick={() => setViewMode('week')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
               viewMode === 'week'
-                ? 'bg-ows-accent text-black shadow-sm'
+                ? 'bg-ows-accent text-black font-semibold shadow-sm'
                 : 'text-ows-text-muted hover:text-ows-text-main'
             }`}
           >
@@ -545,9 +653,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
           </button>
           <button
             onClick={() => setViewMode('day')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
               viewMode === 'day'
-                ? 'bg-ows-accent text-black shadow-sm'
+                ? 'bg-ows-accent text-black font-semibold shadow-sm'
                 : 'text-ows-text-muted hover:text-ows-text-main'
             }`}
           >
@@ -556,9 +664,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
         </div>
       </div>
 
-      {/* 3. Filtres Intégrés (Plateforme, Campagne, Statut) */}
+      {/* 4. Barre de Filtres */}
       <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-ows-surface-1 border border-ows-border text-xs">
-        <span className="text-ows-text-subtle font-medium">Filtrer :</span>
+        <span className="text-ows-text-muted font-medium">Filtrer par :</span>
 
         {/* Filtre Plateforme */}
         <select
@@ -592,11 +700,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
           className="bg-black border border-ows-border rounded-lg px-2.5 py-1.5 text-ows-text-main focus:outline-none focus:border-ows-accent"
         >
           <option value="all">Tous statuts</option>
-          <option value="scheduled">Programmée</option>
-          <option value="published">Publiée</option>
-          <option value="draft">Brouillon</option>
-          <option value="failed">Échec</option>
-          <option value="cancelled">Annulée</option>
+          <option value="scheduled">Programmées</option>
+          <option value="published">Publiées</option>
+          <option value="failed">Échecs</option>
         </select>
 
         {(selectedPlatform !== 'all' || selectedCampaign !== 'all' || selectedStatus !== 'all') && (
@@ -620,7 +726,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
         </div>
       )}
 
-      {/* 4. Affichage selon la vue sélectionnée */}
+      {/* 5. Vues du Calendrier */}
       {loading ? (
         <div className="p-16 text-center text-ows-text-muted">
           <RotateCcw className="w-6 h-6 animate-spin mx-auto mb-2 text-ows-accent" />
@@ -633,7 +739,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
           {/* ========================================================================= */}
           {viewMode === 'month' && (
             <div className="rounded-xl border border-ows-border overflow-hidden bg-ows-surface-card">
-              {/* En-tête des jours de la semaine */}
+              {/* En-tête des jours */}
               <div className="grid grid-cols-7 bg-ows-surface-1 border-b border-ows-border text-center text-xs font-semibold uppercase tracking-wider text-ows-text-muted py-2.5">
                 {dayNames.map(day => (
                   <div key={day}>{day}</div>
@@ -672,7 +778,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
                         <button
                           onClick={() => handleOpenQuickSchedule(item.key)}
                           className="opacity-0 hover:opacity-100 focus:opacity-100 p-1 text-ows-text-subtle hover:text-ows-accent transition-opacity"
-                          title={`Planifier le ${item.key}`}
+                          title={`Planifier un clip pour le ${item.key}`}
                         >
                           <Plus className="w-3.5 h-3.5" />
                         </button>
@@ -680,28 +786,39 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
 
                       {/* Liste des événements de la journée */}
                       <div className="space-y-1.5 flex-1 overflow-hidden">
-                        {dayEvents.slice(0, 3).map(event => (
-                          <div
-                            key={event.id}
-                            onClick={() => handleOpenEdit(event)}
-                            className="group flex items-center gap-1.5 p-1.5 rounded-md bg-black/80 border border-ows-border hover:border-ows-accent text-[11px] cursor-pointer transition-all hover:translate-x-0.5"
-                          >
-                            {renderStatusDot(event.status)}
-                            {renderPlatformIcon(event.platform)}
-                            <span className="font-mono text-ows-text-subtle text-[10px]">
-                              {formatEventTime(event.scheduled_at)}
-                            </span>
-                            <span className="truncate font-medium text-ows-text-main flex-1" title={event.caption || event.title}>
-                              {event.caption || event.title}
-                            </span>
-                            {event.campaign_color && (
-                              <span
-                                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                                style={{ backgroundColor: event.campaign_color }}
-                              />
-                            )}
-                          </div>
-                        ))}
+                        {dayEvents.slice(0, 3).map(event => {
+                          const overdue = isPublicationOverdue(event);
+                          const isPublished = event.status === 'published';
+
+                          return (
+                            <div
+                              key={event.id}
+                              onClick={() => handleOpenEdit(event)}
+                              className={`group flex items-center gap-1.5 p-1.5 rounded-md border text-[11px] cursor-pointer transition-all hover:translate-x-0.5 ${
+                                isPublished
+                                  ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-400/90 line-through'
+                                  : overdue
+                                  ? 'bg-amber-500/10 border-amber-500/50 text-amber-300 ring-1 ring-amber-500/30 font-semibold'
+                                  : 'bg-black/80 border-ows-border hover:border-ows-accent text-ows-text-main'
+                              }`}
+                            >
+                              {renderStatusDot(event)}
+                              {renderPlatformIcon(event.platform)}
+                              <span className="font-mono text-ows-text-subtle text-[10px]">
+                                {formatEventTime(event.scheduled_at)}
+                              </span>
+                              <span className="truncate flex-1" title={event.caption || event.title}>
+                                {event.caption || event.title}
+                              </span>
+                              {event.campaign_color && (
+                                <span
+                                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: event.campaign_color }}
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
 
                         {dayEvents.length > 3 && (
                           <button
@@ -727,7 +844,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
           {/* ========================================================================= */}
           {viewMode === 'week' && (
             <div className="rounded-xl border border-ows-border overflow-hidden bg-ows-surface-card">
-              {/* En-tête des 7 jours de la semaine */}
               <div className="grid grid-cols-7 bg-ows-surface-1 border-b border-ows-border divide-x divide-ows-border text-center">
                 {weekDays.map(item => {
                   const isToday = item.key === todayKey;
@@ -744,61 +860,57 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
                 })}
               </div>
 
-              {/* Colonnes des événements de la semaine */}
               <div className="grid grid-cols-7 divide-x divide-ows-border min-h-[400px]">
                 {weekDays.map(item => {
                   const dayEvents = publicationsByDate[item.key] || [];
+                  const isToday = item.key === todayKey;
 
                   return (
-                    <div key={item.key} className="p-2 space-y-2 bg-ows-surface-card">
-                      {dayEvents.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-center p-2 text-ows-text-subtle">
-                          <p className="text-[11px] italic">Aucun clip</p>
-                          <button
-                            onClick={() => handleOpenQuickSchedule(item.key)}
-                            className="mt-2 text-[10px] text-ows-text-muted hover:text-ows-accent"
-                          >
-                            + Programmer
-                          </button>
-                        </div>
-                      ) : (
-                        dayEvents.map(event => (
+                    <div key={item.key} className={`p-2 space-y-2 ${isToday ? 'bg-ows-accent/5' : ''}`}>
+                      <button
+                        onClick={() => handleOpenQuickSchedule(item.key)}
+                        className="w-full py-1 text-center text-[10px] text-ows-text-subtle hover:text-ows-accent border border-dashed border-transparent hover:border-ows-border rounded transition-colors"
+                      >
+                        + Planifier
+                      </button>
+
+                      {dayEvents.map(event => {
+                        const overdue = isPublicationOverdue(event);
+                        const isPublished = event.status === 'published';
+
+                        return (
                           <div
                             key={event.id}
                             onClick={() => handleOpenEdit(event)}
-                            className="p-2 rounded-lg bg-black border border-ows-border hover:border-ows-accent cursor-pointer transition-all space-y-1.5"
+                            className={`p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                              isPublished
+                                ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-400 line-through'
+                                : overdue
+                                ? 'bg-amber-500/10 border-amber-500/50 text-amber-300 font-semibold ring-1 ring-amber-500/30'
+                                : 'bg-black border-ows-border hover:border-ows-accent text-ows-text-main'
+                            }`}
                           >
-                            <div className="flex items-center justify-between">
-                              <span className="inline-flex items-center gap-1 text-[11px] font-mono text-ows-text-muted font-medium">
-                                <Clock className="w-3 h-3 text-ows-accent" />
-                                {formatEventTime(event.scheduled_at)}
-                              </span>
-                              {renderPlatformIcon(event.platform)}
-                            </div>
-
-                            <p className="text-xs font-semibold text-ows-text-main line-clamp-2" title={event.caption || event.title}>
-                              {event.caption || event.title}
-                            </p>
-
-                            <div className="flex items-center justify-between text-[10px] pt-1 border-t border-ows-border/60">
-                              <span className="text-ows-text-subtle truncate max-w-[80px]">
-                                {event.video_original_name}
-                              </span>
-                              {event.campaign_name && (
-                                <span
-                                  className="px-1.5 py-0.5 rounded text-[9px] font-medium"
-                                  style={{
-                                    backgroundColor: `${event.campaign_color}20`,
-                                    color: event.campaign_color || '#08EB08'
-                                  }}
-                                >
-                                  {event.campaign_name}
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="flex items-center gap-1.5">
+                                {renderStatusDot(event)}
+                                {renderPlatformIcon(event.platform)}
+                                <span className="font-mono text-[10px] text-ows-text-subtle">
+                                  {formatEventTime(event.scheduled_at)}
                                 </span>
+                              </div>
+                              {event.campaign_color && (
+                                <span
+                                  className="w-2 h-2 rounded-full"
+                                  style={{ backgroundColor: event.campaign_color }}
+                                />
                               )}
                             </div>
+                            <p className="text-[11px] font-medium line-clamp-2">
+                              {event.caption || event.title}
+                            </p>
                           </div>
-                        ))
-                      )}
+                        );
+                      })}
                     </div>
                   );
                 })}
@@ -810,91 +922,91 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
           {/* VUE JOUR (DAY VIEW) */}
           {/* ========================================================================= */}
           {viewMode === 'day' && (
-            <div className="rounded-xl border border-ows-border overflow-hidden bg-ows-surface-card p-6">
-              <div className="flex items-center justify-between pb-4 border-b border-ows-border mb-6">
+            <div className="rounded-xl border border-ows-border bg-ows-surface-card p-6 space-y-4">
+              <div className="flex items-center justify-between border-b border-ows-border pb-4">
                 <div>
-                  <h3 className="text-xl font-heading font-bold text-ows-text-main capitalize">
-                    {formatDayHeader(currentDate)}
+                  <h3 className="text-xl font-heading font-bold text-ows-text-main">
+                    {new Intl.DateTimeFormat('fr-FR', {
+                      weekday: 'long',
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                      timeZone: activeTimezone
+                    }).format(currentDate)}
                   </h3>
-                  <p className="text-xs text-ows-text-muted mt-0.5">
-                    {(publicationsByDate[getDateKey(currentDate)] || []).length} clip(s) programmé(s) pour cette journée
+                  <p className="text-xs text-ows-text-muted mt-1">
+                    {(publicationsByDate[getDateKey(currentDate)] || []).length} publication(s) pour cette journée
                   </p>
                 </div>
-
                 <button
                   onClick={() => handleOpenQuickSchedule(getDateKey(currentDate))}
-                  className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-ows-accent hover:bg-ows-accent-hover text-black font-semibold text-xs transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-ows-accent hover:bg-ows-accent-hover text-black font-semibold text-xs transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  Programmer pour ce jour
+                  Planifier un clip
                 </button>
               </div>
 
-              {/* Timeline chronologique des clips de la journée */}
-              {(!publicationsByDate[getDateKey(currentDate)] || publicationsByDate[getDateKey(currentDate)].length === 0) ? (
-                <div className="p-12 text-center text-ows-text-muted">
-                  <CalendarIcon className="w-10 h-10 mx-auto mb-3 text-ows-text-subtle" />
-                  <p className="text-sm">Aucun clip programmé pour cette journée.</p>
+              {(publicationsByDate[getDateKey(currentDate)] || []).length === 0 ? (
+                <div className="py-12 text-center text-ows-text-muted">
+                  <p className="text-sm">Aucun clip programmé pour cette date.</p>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {publicationsByDate[getDateKey(currentDate)].map(event => (
-                    <div
-                      key={event.id}
-                      onClick={() => handleOpenEdit(event)}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-black border border-ows-border hover:border-ows-accent cursor-pointer transition-all"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-14 text-center">
-                          <p className="text-base font-mono font-bold text-ows-accent">
+                <div className="space-y-3">
+                  {(publicationsByDate[getDateKey(currentDate)] || []).map(event => {
+                    const overdue = isPublicationOverdue(event);
+                    const isPublished = event.status === 'published';
+
+                    return (
+                      <div
+                        key={event.id}
+                        onClick={() => handleOpenEdit(event)}
+                        className={`p-4 rounded-xl border flex items-center justify-between gap-4 cursor-pointer transition-all hover:border-ows-accent ${
+                          isPublished
+                            ? 'bg-emerald-950/10 border-emerald-500/30 text-emerald-400'
+                            : overdue
+                            ? 'bg-amber-500/10 border-amber-500/50 text-amber-300 ring-1 ring-amber-500/30'
+                            : 'bg-black border-ows-border text-ows-text-main'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          {renderStatusDot(event)}
+                          {renderPlatformIcon(event.platform)}
+                          <div className="font-mono text-xs text-ows-text-muted whitespace-nowrap">
                             {formatEventTime(event.scheduled_at)}
-                          </p>
-                          <p className="text-[10px] text-ows-text-subtle uppercase">Heure</p>
-                        </div>
-
-                        <div className="h-10 w-[1px] bg-ows-border hidden sm:block" />
-
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            {renderPlatformIcon(event.platform)}
-                            <span className="text-xs font-semibold capitalize text-ows-text-main">
-                              {event.platform}
-                            </span>
-                            {event.campaign_name && (
-                              <span
-                                className="px-2 py-0.5 rounded text-xs font-medium"
-                                style={{
-                                  backgroundColor: `${event.campaign_color}20`,
-                                  color: event.campaign_color || '#08EB08'
-                                }}
-                              >
-                                {event.campaign_name}
-                              </span>
+                          </div>
+                          <div className="truncate">
+                            <p className="text-sm font-medium text-ows-text-main truncate">
+                              {event.caption || event.title}
+                            </p>
+                            {event.hashtags && (
+                              <p className="text-xs text-ows-accent/80 font-mono truncate">
+                                {event.hashtags}
+                              </p>
                             )}
                           </div>
-                          <p className="text-sm font-medium text-ows-text-main max-w-xl">
-                            {event.caption || event.title}
-                          </p>
-                          <p className="text-xs text-ows-text-muted mt-1 font-mono">
-                            Fichier source : {event.video_original_name || event.title}
-                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          {event.campaign_name && (
+                            <span className="px-2 py-0.5 rounded text-xs bg-ows-surface-1 border border-ows-border">
+                              {event.campaign_name}
+                            </span>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCopyText(event);
+                            }}
+                            className="p-2 rounded bg-ows-surface-1 hover:bg-ows-surface-card text-ows-text-muted hover:text-ows-text-main border border-ows-border"
+                            title="Copier le texte"
+                          >
+                            {copiedPubId === event.id ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                          </button>
                         </div>
                       </div>
-
-                      <div className="flex items-center gap-2 self-end sm:self-center">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenEdit(event);
-                          }}
-                          className="p-2 rounded-lg bg-ows-surface-1 border border-ows-border hover:border-ows-accent text-ows-text-muted hover:text-ows-text-main text-xs flex items-center gap-1.5"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                          Reprogrammer
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -903,7 +1015,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 1: CONSULTATION / ÉDITION & REPROGRAMMATION MANUELLE */}
+      {/* MODAL 1: CONSULTATION / ÉDITION & PUBLICATION MANUELLE */}
       {/* ========================================================================= */}
       {selectedPublication && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -915,9 +1027,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
                 </div>
                 <div>
                   <h2 className="text-lg font-heading font-semibold text-ows-text-main">
-                    Gestion Manuelle de la Publication
+                    Détail du Clip & Publication
                   </h2>
-                  <p className="text-xs text-ows-text-muted">
+                  <p className="text-xs text-ows-text-muted truncate max-w-[280px]">
                     {selectedPublication.video_original_name || selectedPublication.title}
                   </p>
                 </div>
@@ -930,13 +1042,56 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
               </button>
             </div>
 
-            <form onSubmit={handleEditSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleEditSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
               {modalError && (
                 <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
                   <span>{modalError}</span>
                 </div>
               )}
+
+              {/* Statut actuel & Indicateur Retard */}
+              <div className="p-3 rounded-xl bg-black border border-ows-border flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-ows-text-muted">Statut :</span>
+                  {selectedPublication.status === 'published' ? (
+                    <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Publiée
+                    </span>
+                  ) : isPublicationOverdue(selectedPublication) ? (
+                    <span className="text-amber-400 font-semibold flex items-center gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5 animate-pulse" /> En retard de publication
+                    </span>
+                  ) : (
+                    <span className="text-ows-accent font-semibold flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5" /> Programmée
+                    </span>
+                  )}
+                </div>
+
+                {/* Bouton Copier le Texte */}
+                <button
+                  type="button"
+                  onClick={() => handleCopyText(selectedPublication)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-all ${
+                    copiedPubId === selectedPublication.id
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                      : 'bg-ows-surface-1 border border-ows-border hover:border-ows-accent text-ows-text-main'
+                  }`}
+                >
+                  {copiedPubId === selectedPublication.id ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Texte copié !</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-ows-accent" />
+                      <span>Copier texte</span>
+                    </>
+                  )}
+                </button>
+              </div>
 
               {/* Date et Heure Programmée */}
               <div>
@@ -948,7 +1103,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
                   type="datetime-local"
                   value={editScheduledAt}
                   onChange={(e) => setEditScheduledAt(e.target.value)}
-                  className="w-full bg-black border border-ows-border rounded-lg px-3 py-2 text-sm text-ows-text-main focus:outline-none focus:border-ows-accent font-mono"
+                  className="w-full bg-black border border-ows-border rounded-lg px-3 py-2 text-sm text-ows-text-main focus:outline-none focus:border-ows-accent font-mono text-xs"
                   required
                 />
               </div>
@@ -1001,18 +1156,48 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
                 />
               </div>
 
+              {/* Hashtags */}
+              <div>
+                <label className="block text-xs font-medium text-ows-text-muted mb-1.5 flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-ows-accent" />
+                  Hashtags
+                </label>
+                <input
+                  type="text"
+                  value={editHashtags}
+                  onChange={(e) => setEditHashtags(e.target.value)}
+                  placeholder="#clipping #viral"
+                  className="w-full bg-black border border-ows-border rounded-lg px-3 py-2 text-sm text-ows-text-main focus:outline-none focus:border-ows-accent font-mono text-xs"
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-medium text-ows-text-muted mb-1.5 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-ows-text-subtle" />
+                  Notes manuelles
+                </label>
+                <input
+                  type="text"
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="Notes de clipping"
+                  className="w-full bg-black border border-ows-border rounded-lg px-3 py-2 text-xs text-ows-text-main focus:outline-none focus:border-ows-accent"
+                />
+              </div>
+
               {/* URL Externe si déjà publiée */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-medium text-ows-text-muted">
-                    Lien externe de publication (optionnel)
+                    Lien vers le post en ligne (optionnel)
                   </label>
-                  {editExternalUrl && (
+                  {editPostUrl && (
                     <a
-                      href={editExternalUrl}
+                      href={editPostUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs text-ows-accent hover:underline inline-flex items-center gap-1 font-mono"
+                      className="text-xs text-emerald-400 hover:underline inline-flex items-center gap-1 font-mono"
                     >
                       <ExternalLink className="w-3 h-3" />
                       Voir le post
@@ -1021,32 +1206,46 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
                 </div>
                 <input
                   type="url"
-                  value={editExternalUrl}
-                  onChange={(e) => setEditExternalUrl(e.target.value)}
-                  placeholder="https://..."
+                  value={editPostUrl}
+                  onChange={(e) => setEditPostUrl(e.target.value)}
+                  placeholder="https://tiktok.com/@... ou https://instagram.com/p/..."
                   className="w-full bg-black border border-ows-border rounded-lg px-3 py-2 text-sm text-ows-text-main focus:outline-none focus:border-ows-accent font-mono text-xs"
                 />
               </div>
 
-              {/* Actions */}
-              <div className="flex items-center justify-between pt-4 border-t border-ows-border">
-                <button
-                  type="button"
-                  onClick={handleUnschedule}
-                  disabled={submitting}
-                  className="px-3 py-2 text-xs text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
-                  title="Retire la date programmée et repasse en brouillon"
-                >
-                  Déprogrammer
-                </button>
-
+              {/* Actions du Modal */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-4 border-t border-ows-border">
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleUnschedule}
+                    disabled={submitting}
+                    className="px-3 py-2 text-xs text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                    title="Retire la date programmée et repasse en brouillon"
+                  >
+                    Déprogrammer
+                  </button>
+
+                  {selectedPublication.status !== 'published' && (
+                    <button
+                      type="button"
+                      onClick={handleMarkAsPublishedFromModal}
+                      disabled={submitting}
+                      className="px-3 py-2 text-xs bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 text-emerald-400 rounded-lg transition-colors font-semibold flex items-center gap-1.5"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Marquer publié
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-end gap-2">
                   <button
                     type="button"
                     onClick={() => setSelectedPublication(null)}
                     className="px-4 py-2 text-sm text-ows-text-muted hover:text-ows-text-main"
                   >
-                    Annuler
+                    Fermer
                   </button>
                   <button
                     type="submit"
@@ -1101,7 +1300,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
               {/* Sélection du brouillon */}
               <div>
                 <label className="block text-xs font-medium text-ows-text-muted mb-1.5">
-                  Sélectionner un brouillon à programmer
+                  Sélectionner un clip brouillon à programmer
                 </label>
                 {unscheduledPubs.length === 0 ? (
                   <div className="p-3 bg-black border border-ows-border rounded-lg text-xs text-ows-text-muted">
