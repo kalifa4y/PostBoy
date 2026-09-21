@@ -10,9 +10,17 @@ import {
   Calendar,
   ExternalLink,
   RefreshCw,
-  Clock
+  Clock,
+  Flame,
+  Target,
+  BarChart3,
+  XCircle
 } from 'lucide-react';
-import { DashboardData } from '../types/domain';
+import {
+  DashboardData,
+  ClippingHistoryResponse,
+  DailyClippingGoal
+} from '../types/domain';
 import { NavTab } from '../components/layout/Sidebar';
 
 interface DashboardViewProps {
@@ -69,6 +77,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, active
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Filtres temporels de l'historique (Phase 5)
+  const [historyPeriod, setHistoryPeriod] = useState<'day' | 'week' | 'month' | 'year'>('week');
+  const [historyData, setHistoryData] = useState<ClippingHistoryResponse | null>(null);
+  const [historyLoading, setHistoryLoading] = useState<boolean>(false);
+
   const fetchDashboardStats = useCallback(async () => {
     try {
       setLoading(true);
@@ -91,12 +104,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, active
     }
   }, []);
 
+  const fetchHistory = useCallback(async (period: 'day' | 'week' | 'month' | 'year') => {
+    try {
+      setHistoryLoading(true);
+      const res = await fetch(`/api/dashboard/history?period=${period}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.status === 'success') {
+          setHistoryData(json);
+        }
+      }
+    } catch (err) {
+      console.error('Erreur chargement historique:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchDashboardStats();
     // Rafraîchissement périodique toutes les 20 secondes
     const interval = setInterval(fetchDashboardStats, 20000);
     return () => clearInterval(interval);
   }, [fetchDashboardStats]);
+
+  useEffect(() => {
+    fetchHistory(historyPeriod);
+  }, [fetchHistory, historyPeriod]);
 
   // Formatage de date locale
   const formatDateTime = (dateStr: string | null) => {
@@ -124,6 +158,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, active
     totalVideos: 0
   };
 
+  const dailyGoal: DailyClippingGoal = data?.dailyGoal || {
+    date: new Date().toISOString().slice(0, 10),
+    targetPosts: 5,
+    targetCampaigns: 5,
+    scheduledToday: 0,
+    publishedToday: 0,
+    distinctCampaignsToday: 0,
+    remainingPosts: 5,
+    remainingCampaigns: 5,
+    isGoalMet: false,
+    streak: 0,
+    bestStreak: 0
+  };
+
   const upcomingList = data?.upcomingPublications || [];
   const recentList = data?.recentPublications || [];
 
@@ -136,19 +184,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, active
             Tableau de Bord
           </h2>
           <p className="text-xs text-ows-textMuted mt-1">
-            Supervision en temps réel des vidéos et des publications programmées.
+            Supervision en temps réel, discipline de clipping et suivi des publications.
           </p>
         </div>
 
         {/* Bouton d'actualisation manuelle */}
         <div className="flex items-center space-x-3">
           <button
-            onClick={fetchDashboardStats}
-            disabled={loading}
+            onClick={() => {
+              fetchDashboardStats();
+              fetchHistory(historyPeriod);
+            }}
+            disabled={loading || historyLoading}
             className="inline-flex items-center space-x-2 px-3 py-2 rounded-lg bg-ows-surface1 border border-ows-border hover:border-ows-accent/50 text-xs font-medium text-ows-textMuted hover:text-ows-textMain transition-all disabled:opacity-50"
             title="Rafraîchir les métriques"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-ows-accent' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${(loading || historyLoading) ? 'animate-spin text-ows-accent' : ''}`} />
             <span>Actualiser</span>
           </button>
         </div>
@@ -162,7 +213,268 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, active
         </div>
       )}
 
-      {/* 2. Cartes de Métriques Clés (4 KPIs) */}
+      {/* 2. OBJECTIF QUOTIDIEN DE DISCIPLINE DE CLIPPING (PHASE 5) */}
+      <div className="bg-ows-surface1 border border-ows-border rounded-xl p-6 relative overflow-hidden">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-ows-borderSubtle">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-ows-accent/10 border border-ows-accent/20 flex items-center justify-center text-ows-accent">
+              <Target className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2.5">
+                <h3 className="text-base font-bold font-heading text-ows-textMain">
+                  Discipline Quotidienne de Clipping
+                </h3>
+                {dailyGoal.isGoalMet ? (
+                  <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Objectif atteint</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>En cours ({dailyGoal.remainingPosts} restante{dailyGoal.remainingPosts > 1 ? 's' : ''})</span>
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-ows-textMuted mt-0.5">
+                Objectif strict : 5 publications minimum par jour associées à 5 campagnes différentes.
+              </p>
+            </div>
+          </div>
+
+          {/* Indicateur de Streak */}
+          <div className="flex items-center space-x-2">
+            <div className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-ows-surface2 border border-ows-border text-xs">
+              <Flame className="w-4 h-4 text-orange-400" />
+              <span className="text-ows-textMuted">Série en cours :</span>
+              <span className="font-bold font-mono text-ows-textMain">
+                {dailyGoal.streak} {dailyGoal.streak > 1 ? 'jours' : 'jour'}
+              </span>
+              {dailyGoal.bestStreak > 0 && (
+                <span className="text-[11px] text-ows-textSubtle font-mono">
+                  (record : {dailyGoal.bestStreak}j)
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 3 Cartes Métriques Quotidiennes */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
+          {/* Métrique 1 : Publiés aujourd'hui */}
+          <div className="p-4 rounded-xl bg-ows-surface2 border border-ows-border flex flex-col justify-between">
+            <span className="text-xs font-medium text-ows-textMuted">Publications publiées</span>
+            <div className="mt-2 flex items-baseline space-x-2">
+              <span className={`text-3xl font-bold font-heading ${dailyGoal.publishedToday >= 5 ? 'text-emerald-400' : 'text-ows-textMain'}`}>
+                {dailyGoal.publishedToday}
+              </span>
+              <span className="text-sm font-mono text-ows-textSubtle">/ 5</span>
+            </div>
+            <div className="text-[11px] text-ows-textSubtle mt-1 flex items-center justify-between font-mono">
+              <span>Planifiés : {dailyGoal.scheduledToday} / 5</span>
+              <span className="text-ows-textMuted">{dailyGoal.publishedToday >= 5 ? 'Quota atteint' : `${dailyGoal.remainingPosts} restant(s)`}</span>
+            </div>
+          </div>
+
+          {/* Métrique 2 : Campagnes différentes */}
+          <div className="p-4 rounded-xl bg-ows-surface2 border border-ows-border flex flex-col justify-between">
+            <span className="text-xs font-medium text-ows-textMuted">Campagnes différentes</span>
+            <div className="mt-2 flex items-baseline space-x-2">
+              <span className={`text-3xl font-bold font-heading ${dailyGoal.distinctCampaignsToday >= 5 ? 'text-emerald-400' : 'text-ows-textMain'}`}>
+                {dailyGoal.distinctCampaignsToday}
+              </span>
+              <span className="text-sm font-mono text-ows-textSubtle">/ 5</span>
+            </div>
+            <div className="text-[11px] text-ows-textSubtle mt-1">
+              {dailyGoal.distinctCampaignsToday >= 5 ? (
+                <span className="text-emerald-400 font-medium">5 campagnes distinctes validées</span>
+              ) : (
+                <span>{dailyGoal.remainingCampaigns} campagne(s) distincte(s) restante(s)</span>
+              )}
+            </div>
+          </div>
+
+          {/* Métrique 3 : Restantes pour atteindre 5 */}
+          <div className="p-4 rounded-xl bg-ows-surface2 border border-ows-border flex flex-col justify-between">
+            <span className="text-xs font-medium text-ows-textMuted">Statut & Restants</span>
+            <div className="mt-2 flex items-baseline space-x-2">
+              <span className={`text-3xl font-bold font-heading ${dailyGoal.isGoalMet ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {dailyGoal.remainingPosts}
+              </span>
+              <span className="text-sm font-mono text-ows-textSubtle">restante{dailyGoal.remainingPosts > 1 ? 's' : ''}</span>
+            </div>
+            <div className="text-[11px] text-ows-textSubtle mt-1">
+              {dailyGoal.isGoalMet ? (
+                <span className="text-emerald-400 font-medium">Objectif 5/5 validé aujourd'hui</span>
+              ) : (
+                <span>À poster manuellement</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Jauge visuelle de paliers (1 à 5) */}
+        <div className="mt-5 space-y-1.5">
+          <div className="flex justify-between text-[11px] font-mono text-ows-textSubtle">
+            <span>Progression du jour (Publications & Campagnes)</span>
+            <span>
+              {dailyGoal.isGoalMet
+                ? '100%'
+                : `${Math.round(((Math.min(dailyGoal.publishedToday, 5) + Math.min(dailyGoal.distinctCampaignsToday, 5)) / 10) * 100)}%`}
+            </span>
+          </div>
+          <div className="grid grid-cols-5 gap-1.5 h-2.5">
+            {[1, 2, 3, 4, 5].map((slot) => {
+              const isPubFilled = dailyGoal.publishedToday >= slot;
+              const isCampFilled = dailyGoal.distinctCampaignsToday >= slot;
+              const isBoth = isPubFilled && isCampFilled;
+              return (
+                <div
+                  key={slot}
+                  className={`rounded-sm transition-all ${
+                    isBoth
+                      ? 'bg-emerald-400'
+                      : isPubFilled
+                      ? 'bg-amber-400/80'
+                      : 'bg-ows-surface2 border border-ows-border/60'
+                  }`}
+                  title={`Palier ${slot} : ${isPubFilled ? 'Publication validée' : 'Manquante'} • ${isCampFilled ? 'Campagne validée' : 'Campagne manquante'}`}
+                />
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* 3. SUIVI HISTORIQUE ET STATISTIQUES (PHASE 5) */}
+      <div className="bg-ows-surface1 border border-ows-border rounded-xl p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-ows-borderSubtle">
+          <div className="flex items-center space-x-2">
+            <BarChart3 className="w-4 h-4 text-ows-accent" />
+            <h3 className="font-heading font-semibold text-sm text-ows-textMain">
+              Suivi Historique & Performance
+            </h3>
+          </div>
+
+          {/* Onglets Temporels : Jour / Semaine / Mois / Année */}
+          <div className="flex items-center bg-black border border-ows-border rounded-lg p-1 text-xs">
+            {(['day', 'week', 'month', 'year'] as const).map((p) => {
+              const labels = { day: 'Jour', week: 'Semaine', month: 'Mois', year: 'Année' };
+              const active = historyPeriod === p;
+              return (
+                <button
+                  key={p}
+                  onClick={() => setHistoryPeriod(p)}
+                  className={`px-3 py-1 rounded-md transition-all ${
+                    active
+                      ? 'bg-ows-accent text-black font-semibold shadow-sm'
+                      : 'text-ows-textMuted hover:text-ows-textMain'
+                  }`}
+                >
+                  {labels[p]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Résumé de la période sélectionnée */}
+        {historyData && (
+          <div className="mt-4 space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3 rounded-lg bg-ows-surface2 border border-ows-border">
+                <span className="text-[10px] uppercase font-mono text-ows-textSubtle">Total Publié</span>
+                <div className="text-xl font-bold font-heading text-ows-textMain mt-1">
+                  {historyData.summary.totalPublished}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-ows-surface2 border border-ows-border">
+                <span className="text-[10px] uppercase font-mono text-ows-textSubtle">Campagnes Utilisées</span>
+                <div className="text-xl font-bold font-heading text-ows-textMain mt-1">
+                  {historyData.summary.distinctCampaigns}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-ows-surface2 border border-ows-border">
+                <span className="text-[10px] uppercase font-mono text-ows-textSubtle">Jours Objectif Atteint</span>
+                <div className="text-xl font-bold font-heading text-emerald-400 mt-1">
+                  {historyData.summary.goalsMetDays}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-ows-surface2 border border-ows-border">
+                <span className="text-[10px] uppercase font-mono text-ows-textSubtle">Jours Non Atteints</span>
+                <div className="text-xl font-bold font-heading text-amber-400 mt-1">
+                  {historyData.summary.goalsMissedDays}
+                </div>
+              </div>
+            </div>
+
+            {/* Découpage par intervalle */}
+            <div className="pt-2">
+              <div className="text-[11px] font-mono text-ows-textSubtle mb-2">
+                Détail de la période ({historyData.intervals.length} intervalle{historyData.intervals.length > 1 ? 's' : ''})
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                {historyData.intervals.map((item) => {
+                  const isZero = item.publishedCount === 0;
+                  return (
+                    <div
+                      key={item.dateKey}
+                      className={`p-2.5 rounded-lg border flex flex-col justify-between text-xs transition-all ${
+                        item.isGoalMet
+                          ? 'bg-emerald-500/5 border-emerald-500/30'
+                          : isZero
+                          ? 'bg-ows-surface2/30 border-ows-border/60 text-ows-textSubtle'
+                          : 'bg-ows-surface2 border-ows-border'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-ows-textMain text-[11px]">
+                          {item.label}
+                        </span>
+                        {item.isGoalMet ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        ) : isZero ? (
+                          <XCircle className="w-3.5 h-3.5 text-ows-textSubtle" />
+                        ) : (
+                          <Clock className="w-3.5 h-3.5 text-amber-400" />
+                        )}
+                      </div>
+
+                      <div className="mt-2 font-mono text-[11px]">
+                        <span className={item.publishedCount >= 5 ? 'text-emerald-400 font-bold' : 'text-ows-textMain'}>
+                          {item.publishedCount}
+                        </span>
+                        <span className="text-ows-textSubtle"> / 5 posts</span>
+                      </div>
+
+                      <div className="mt-0.5 font-mono text-[10px] text-ows-textSubtle">
+                        {item.distinctCampaignsCount} camp.
+                      </div>
+
+                      <div className="mt-1.5 pt-1.5 border-t border-ows-borderSubtle text-[9px] font-mono">
+                        {item.isGoalMet ? (
+                          <span className="text-emerald-400 font-semibold">Objectif atteint</span>
+                        ) : isZero ? (
+                          <span className="text-ows-textSubtle">0/5 • Non atteint</span>
+                        ) : (
+                          <span className="text-amber-400">Objectif non atteint</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 4. Cartes de Métriques Clés (4 KPIs généraux) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KPI 1 : Vidéos à publier */}
         <div className="bg-ows-surface1 border border-ows-border rounded-xl p-5 relative overflow-hidden flex flex-col justify-between">

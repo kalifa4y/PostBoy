@@ -133,7 +133,7 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
       }
 
       if (scheduled_only === 'true' || scheduled_only === '1') {
-        conditions.push("p.scheduled_at IS NOT NULL AND TRIM(p.scheduled_at) != ''");
+        conditions.push("((p.scheduled_at IS NOT NULL AND TRIM(p.scheduled_at) != '') OR p.published_at IS NOT NULL)");
       }
 
       if (start_date && start_date.trim() !== '') {

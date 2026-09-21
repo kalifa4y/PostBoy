@@ -130,6 +130,49 @@ export interface AppSettings {
   notification_email?: string;
 }
 
+export interface DailyClippingGoal {
+  date: string;
+  targetPosts: number;
+  targetCampaigns: number;
+  scheduledToday: number;
+  publishedToday: number;
+  distinctCampaignsToday: number;
+  remainingPosts: number;
+  remainingCampaigns: number;
+  isGoalMet: boolean;
+  streak: number;
+  bestStreak: number;
+}
+
+export interface ClippingHistoryInterval {
+  dateKey: string;
+  label: string;
+  publishedCount: number;
+  scheduledCount: number;
+  distinctCampaignsCount: number;
+  isGoalMet: boolean;
+  targetPosts: number;
+  targetCampaigns: number;
+}
+
+export interface ClippingHistorySummary {
+  period: 'day' | 'week' | 'month' | 'year';
+  referenceDate: string;
+  totalPublished: number;
+  totalScheduled: number;
+  distinctCampaigns: number;
+  goalsMetDays: number;
+  goalsMissedDays: number;
+  currentStreak: number;
+  bestStreak: number;
+}
+
+export interface ClippingHistoryResponse {
+  status: 'success';
+  summary: ClippingHistorySummary;
+  intervals: ClippingHistoryInterval[];
+}
+
 export interface DashboardStats {
   videosToPublish: number;
   scheduledCount: number;
@@ -165,6 +208,7 @@ export interface RecentPublicationItem {
 export interface DashboardData {
   status: 'success' | 'error';
   stats: DashboardStats;
+  dailyGoal?: DailyClippingGoal;
   upcomingPublications: UpcomingPublicationItem[];
   recentPublications: RecentPublicationItem[];
 }

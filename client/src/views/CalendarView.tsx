@@ -189,12 +189,42 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
     });
   }, [publications, selectedPlatform, selectedStatus, selectedCampaign]);
 
+  // Statistiques d'atteinte de l'objectif de clipping par jour (Phase 5 : 5 posts / 5 campagnes)
+  const dayClippingStats = useMemo(() => {
+    const statsMap: Record<string, { publishedCount: number; campaignsCount: number; isGoalMet: boolean }> = {};
+    const campaignsMap: Record<string, Set<string>> = {};
+
+    for (const pub of publications) {
+      if (pub.status === 'published' && pub.published_at) {
+        const k = getDateKey(pub.published_at);
+        if (!k) continue;
+        if (!statsMap[k]) {
+          statsMap[k] = { publishedCount: 0, campaignsCount: 0, isGoalMet: false };
+          campaignsMap[k] = new Set();
+        }
+        statsMap[k].publishedCount++;
+        if (pub.campaign_id) {
+          campaignsMap[k].add(pub.campaign_id);
+        }
+      }
+    }
+
+    for (const k in statsMap) {
+      const cCount = campaignsMap[k] ? campaignsMap[k].size : 0;
+      statsMap[k].campaignsCount = cCount;
+      statsMap[k].isGoalMet = statsMap[k].publishedCount >= 5 && cCount >= 5;
+    }
+
+    return statsMap;
+  }, [publications, activeTimezone]);
+
   // Dictionnaire des publications indexées par clé de date YYYY-MM-DD
   const publicationsByDate = useMemo(() => {
     const map: Record<string, Publication[]> = {};
     for (const pub of filteredPublications) {
-      if (!pub.scheduled_at) continue;
-      const key = getDateKey(pub.scheduled_at);
+      const targetDate = pub.status === 'published' && pub.published_at ? pub.published_at : pub.scheduled_at;
+      if (!targetDate) continue;
+      const key = getDateKey(targetDate);
       if (!key) continue;
       if (!map[key]) map[key] = [];
       map[key].push(pub);
@@ -761,19 +791,58 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
                           : 'bg-black/40 text-ows-text-subtle'
                       } ${isToday ? 'ring-1 ring-inset ring-ows-accent/50 bg-ows-accent/5' : ''}`}
                     >
-                      {/* Numéro du jour & bouton d'ajout */}
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span
-                          className={`text-xs font-heading font-bold rounded-md px-1.5 py-0.5 ${
-                            isToday
-                              ? 'bg-ows-accent text-black'
-                              : item.isCurrentMonth
-                              ? 'text-ows-text-main'
-                              : 'text-ows-text-subtle'
-                          }`}
-                        >
-                          {item.date.getDate()}
-                        </span>
+                      {/* Numéro du jour & indicateur de discipline & bouton d'ajout */}
+                      <div className="flex items-center justify-between mb-1.5 gap-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span
+                            className={`text-xs font-heading font-bold rounded-md px-1.5 py-0.5 ${
+                              isToday
+                                ? 'bg-ows-accent text-black'
+                                : item.isCurrentMonth
+                                ? 'text-ows-text-main'
+                                : 'text-ows-text-subtle'
+                            }`}
+                          >
+                            {item.date.getDate()}
+                          </span>
+
+                          {/* Indicateur de performance de clipping quotidienne (Phase 5) */}
+                          {(() => {
+                            const perf = dayClippingStats[item.key];
+                            if (!perf || perf.publishedCount === 0) {
+                              if (item.isCurrentMonth && item.key < todayKey) {
+                                return (
+                                  <span
+                                    className="text-[9px] font-mono text-zinc-500 px-1 py-0.5 rounded bg-zinc-900 border border-zinc-800"
+                                    title="0 publication réalisée • Objectif non atteint"
+                                  >
+                                    0/5
+                                  </span>
+                                );
+                              }
+                              return null;
+                            }
+                            if (perf.isGoalMet) {
+                              return (
+                                <span
+                                  className="inline-flex items-center gap-0.5 text-[9px] font-mono font-semibold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-1 py-0.5 rounded"
+                                  title={`${perf.publishedCount}/5 posts • ${perf.campaignsCount}/5 campagnes (Objectif atteint)`}
+                                >
+                                  <Check className="w-2.5 h-2.5 stroke-[3]" />
+                                  <span>5/5</span>
+                                </span>
+                              );
+                            }
+                            return (
+                              <span
+                                className="inline-flex items-center text-[9px] font-mono text-zinc-400 bg-zinc-900 border border-zinc-800 px-1 py-0.5 rounded"
+                                title={`${perf.publishedCount}/5 posts • ${perf.campaignsCount}/5 campagnes (Objectif non atteint)`}
+                              >
+                                {perf.publishedCount}/5
+                              </span>
+                            );
+                          })()}
+                        </div>
 
                         <button
                           onClick={() => handleOpenQuickSchedule(item.key)}
@@ -847,14 +916,47 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
               <div className="grid grid-cols-7 bg-ows-surface-1 border-b border-ows-border divide-x divide-ows-border text-center">
                 {weekDays.map(item => {
                   const isToday = item.key === todayKey;
+                  const perf = dayClippingStats[item.key];
+
                   return (
-                    <div key={item.key} className={`py-3 px-2 ${isToday ? 'bg-ows-accent/10' : ''}`}>
+                    <div key={item.key} className={`py-3 px-2 flex flex-col items-center justify-between ${isToday ? 'bg-ows-accent/10' : ''}`}>
                       <p className="text-xs uppercase font-semibold text-ows-text-muted">
                         {new Intl.DateTimeFormat('fr-FR', { weekday: 'short', timeZone: activeTimezone }).format(item.date)}
                       </p>
                       <p className={`text-lg font-heading font-bold mt-0.5 ${isToday ? 'text-ows-accent' : 'text-ows-text-main'}`}>
                         {item.date.getDate()}
                       </p>
+
+                      {/* Indicateur d'objectif de clipping pour la journée (Phase 5) */}
+                      <div className="mt-1">
+                        {perf && perf.isGoalMet ? (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-950/40 border border-emerald-500/30"
+                            title={`${perf.publishedCount} posts • ${perf.campaignsCount} campagnes distinctes`}
+                          >
+                            <Check className="w-2.5 h-2.5 stroke-[3]" />
+                            <span>5/5 • {perf.campaignsCount}c</span>
+                          </span>
+                        ) : perf && perf.publishedCount > 0 ? (
+                          <span
+                            className="inline-flex items-center text-[10px] font-mono text-ows-text-muted px-1.5 py-0.5 rounded bg-black border border-ows-border"
+                            title={`${perf.publishedCount} posts • ${perf.campaignsCount} campagnes distinctes (Objectif non atteint)`}
+                          >
+                            {perf.publishedCount}/5 • {perf.campaignsCount}c
+                          </span>
+                        ) : item.key < todayKey ? (
+                          <span
+                            className="text-[9px] font-mono text-zinc-500 px-1.5 py-0.5 rounded bg-black/40 border border-zinc-800"
+                            title="0 publication réalisée • Objectif non atteint"
+                          >
+                            0/5 • Non atteint
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-mono text-zinc-600">
+                            En attente
+                          </span>
+                        )}
+                      </div>
                     </div>
                   );
                 })}

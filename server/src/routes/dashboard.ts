@@ -1,5 +1,10 @@
 import { FastifyInstance } from 'fastify';
 import { getDatabase } from '../db/connection.js';
+import {
+  getDailyClippingGoal,
+  getClippingHistory,
+  DailyClippingGoal
+} from '../services/clippingGoalService.js';
 
 export interface DashboardStatsResponse {
   status: 'success';
@@ -10,6 +15,7 @@ export interface DashboardStatsResponse {
     failedCount: number;
     totalVideos: number;
   };
+  dailyGoal: DailyClippingGoal;
   upcomingPublications: Array<{
     id: string;
     platform: string;
@@ -35,9 +41,13 @@ export interface DashboardStatsResponse {
 }
 
 export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.get('/api/dashboard/stats', async (_request, reply) => {
+  // 1. Statistiques générales du Dashboard + Objectif de clipping du jour
+  fastify.get<{
+    Querystring: { date?: string };
+  }>('/api/dashboard/stats', async (request, reply) => {
     try {
       const db = getDatabase();
+      const targetDate = request.query.date;
 
       // 1. Vidéos à publier (vidéos n'ayant pas encore de publication marquée 'published')
       const videosToPublishRow = await db.get<{ count: number }>(`
@@ -67,7 +77,10 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
         SELECT COUNT(*) as count FROM publications WHERE status = 'failed'
       `);
 
-      // 5. Prochaines publications programmées (triées par date d'échéance croissante)
+      // 5. Objectif quotidien de clipping (5 publications / 5 campagnes distinctes)
+      const dailyGoal = await getDailyClippingGoal(db, targetDate);
+
+      // 6. Prochaines publications programmées (triées par date d'échéance croissante)
       const upcomingPublications = await db.all<DashboardStatsResponse['upcomingPublications'][number]>(`
         SELECT 
           p.id,
@@ -86,7 +99,7 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
         LIMIT 50
       `);
 
-      // 6. Publications récentes (publiées ou échouées, triées par date décroissante)
+      // 7. Publications récentes (publiées ou échouées, triées par date décroissante)
       const recentPublications = await db.all<DashboardStatsResponse['recentPublications'][number]>(`
         SELECT 
           p.id,
@@ -116,6 +129,7 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
           failedCount: Number(failedRow?.count || 0),
           totalVideos: Number(totalVideosRow?.count || 0)
         },
+        dailyGoal,
         upcomingPublications,
         recentPublications
       };
@@ -130,4 +144,28 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
       });
     }
   });
+
+  // 2. Historique et filtres temporels (Jour, Semaine, Mois, Année)
+  fastify.get<{
+    Querystring: { period?: string; date?: string };
+  }>('/api/dashboard/history', async (request, reply) => {
+    try {
+      const db = getDatabase();
+      const rawPeriod = (request.query.period || 'week').toLowerCase();
+      const validPeriods = ['day', 'week', 'month', 'year'] as const;
+      const period = (validPeriods.includes(rawPeriod as any) ? rawPeriod : 'week') as 'day' | 'week' | 'month' | 'year';
+      const targetDate = request.query.date;
+
+      const history = await getClippingHistory(db, period, targetDate);
+      return reply.code(200).send(history);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Erreur interne lors du calcul de l'historique";
+      fastify.log.error(error);
+      return reply.code(500).send({
+        status: 'error',
+        message
+      });
+    }
+  });
 }
+
