@@ -69,11 +69,14 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
       campaign_id?: string;
       video_id?: string;
       search?: string;
+      scheduled_only?: string;
+      start_date?: string;
+      end_date?: string;
     };
   }>('/api/publications', async (request, reply) => {
     try {
       const db = getDatabase();
-      const { platform, status, campaign_id, video_id, search } = request.query;
+      const { platform, status, campaign_id, video_id, search, scheduled_only, start_date, end_date } = request.query;
 
       const conditions: string[] = [];
       const params: Array<string | number | null> = [];
@@ -100,6 +103,20 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
       if (video_id) {
         conditions.push('p.video_id = ?');
         params.push(video_id);
+      }
+
+      if (scheduled_only === 'true' || scheduled_only === '1') {
+        conditions.push("p.scheduled_at IS NOT NULL AND TRIM(p.scheduled_at) != ''");
+      }
+
+      if (start_date && start_date.trim() !== '') {
+        conditions.push("p.scheduled_at >= ?");
+        params.push(start_date.trim());
+      }
+
+      if (end_date && end_date.trim() !== '') {
+        conditions.push("p.scheduled_at <= ?");
+        params.push(end_date.trim());
       }
 
       if (search && search.trim() !== '') {

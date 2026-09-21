@@ -5,12 +5,12 @@ import { DashboardView } from './views/DashboardView';
 import { CampaignsView } from './views/CampaignsView';
 import { VideosView } from './views/VideosView';
 import { PublicationsView } from './views/PublicationsView';
+import { CalendarView } from './views/CalendarView';
 import { FoundationView } from './views/FoundationView';
 import { SettingsView } from './views/SettingsView';
 import { PlaceholderView } from './views/PlaceholderView';
 import { HealthStatus } from './types/domain';
 import {
-  Calendar,
   Share2
 } from 'lucide-react';
 
@@ -113,16 +113,9 @@ export const App: React.FC = () => {
           )}
 
           {activeTab === 'calendar' && (
-            <PlaceholderView
-              phaseNumber={5}
-              title="Calendrier & Programmation Manuelle"
-              description="Visualisation temporelle et planification précise de vos clips sur une grille calendaire."
-              icon={Calendar}
-              deliverables={[
-                'Vue mensuelle, hebdomadaire et journalière',
-                'Glisser-déposer ou sélection de créneau horaire',
-                'Respect du fuseau horaire configuré'
-              ]}
+            <CalendarView
+              activeTimezone={health?.activeTimezone || 'Africa/Bamako'}
+              onNavigateToTab={setActiveTab}
             />
           )}
 
