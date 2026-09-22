@@ -130,7 +130,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSettingsUpdated })
       });
       const data = await res.json();
       if (data.status === 'success') {
-        setMessage({ type: 'success', text: 'Paramètres enregistrés avec succès dans SQLite.' });
+        setMessage({ type: 'success', text: 'Vos préférences ont été enregistrées avec succès.' });
         onSettingsUpdated();
       } else {
         setMessage({ type: 'error', text: data.message || 'Erreur lors de la sauvegarde.' });
@@ -147,10 +147,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSettingsUpdated })
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold font-heading text-ows-textMain tracking-tight">
-            Configuration Système
+            Préférences
           </h2>
           <p className="text-xs text-ows-textMuted mt-1">
-            Gestion du fuseau horaire, des notifications et des préférences de l'application locale.
+            Ajustez votre fuseau horaire et la réception de vos alertes de publication.
           </p>
         </div>
         {message && (
@@ -218,52 +218,52 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSettingsUpdated })
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2 text-ows-textMain">
               <Mail className="w-4 h-4 text-ows-accent" />
-              <h3 className="font-heading font-semibold text-sm">Notifications Email (SMTP)</h3>
+              <h3 className="font-heading font-semibold text-sm">Alertes & Rappels par Email</h3>
             </div>
             <span
-              className={`text-[10px] font-mono font-medium px-2.5 py-0.5 rounded border ${
+              className={`text-[10px] font-medium px-2.5 py-0.5 rounded-full border ${
                 smtpStatus?.configured
                   ? 'bg-ows-accent/15 border-ows-accent/30 text-ows-accent'
                   : 'bg-amber-500/15 border-amber-500/30 text-amber-400'
               }`}
             >
-              {smtpStatus?.configured ? 'SMTP Configuré' : 'Non configuré'}
+              {smtpStatus?.configured ? 'Alertes activées' : 'Non configuré'}
             </span>
           </div>
 
           <p className="text-xs text-ows-textMuted">
-            Recevez des rappels par email pour vos publications planifiées et les bilans de vos objectifs de clipping.
+            Recevez des rappels avant vos créneaux de publication et le bilan de votre objectif quotidien.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <div className="p-3.5 rounded-lg bg-ows-surface2 border border-ows-border space-y-2">
               <div className="text-xs font-medium text-ows-textMain flex items-center justify-between">
-                <span>Destinataire des alertes</span>
-                <span className="font-mono text-[11px] text-ows-textSubtle">NOTIFICATION_EMAIL</span>
+                <span>Adresse de réception</span>
+                <span className="text-[11px] text-ows-textSubtle">Boîte de réception</span>
               </div>
               <div className="text-xs text-ows-textMuted font-mono">
-                {smtpStatus?.recipient || 'Non renseigné dans .env'}
+                {smtpStatus?.recipient || 'Non renseigné dans l’environnement'}
               </div>
             </div>
 
             <div className="p-3.5 rounded-lg bg-ows-surface2 border border-ows-border space-y-2">
               <div className="text-xs font-medium text-ows-textMain flex items-center justify-between">
-                <span>Serveur SMTP</span>
-                <span className="font-mono text-[11px] text-ows-textSubtle">
-                  {smtpStatus?.secure ? 'SSL/TLS' : 'STARTTLS'}
+                <span>Service d’expédition</span>
+                <span className="text-[11px] text-ows-textSubtle">
+                  Canal sécurisé
                 </span>
               </div>
               <div className="text-xs text-ows-textMuted font-mono">
-                {smtpStatus?.host ? `${smtpStatus.host}:${smtpStatus.port || 587}` : 'Non configuré dans .env'}
+                {smtpStatus?.host ? `${smtpStatus.host}` : 'Non configuré dans l’environnement'}
               </div>
             </div>
           </div>
 
-          {/* Test d'envoi SMTP & Message de retour */}
+          {/* Test d'envoi & Message de retour */}
           <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-ows-border">
             <div className="flex items-center space-x-2 text-[11px] text-ows-textSubtle">
               <ShieldCheck className="w-3.5 h-3.5 text-ows-accent" />
-              <span>Les mots de passe SMTP sont gérés de manière sécurisée via le fichier <code className="text-ows-textMuted">.env</code> local.</span>
+              <span>Vos identifiants d’envoi restent strictement privés et protégés.</span>
             </div>
 
             <button
@@ -307,7 +307,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSettingsUpdated })
             className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 px-5 py-2.5 rounded-lg bg-ows-accent text-black font-semibold text-xs hover:bg-ows-accentHover transition-colors disabled:opacity-50 shadow-sm"
           >
             <Save className="w-4 h-4" />
-            <span>{saving ? 'Enregistrement...' : 'Enregistrer la configuration'}</span>
+            <span>{saving ? 'Enregistrement...' : 'Enregistrer les préférences'}</span>
           </button>
         </div>
       </form>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, RefreshCw, CheckCircle2, AlertCircle, Menu } from 'lucide-react';
+import { Clock, RefreshCw, AlertCircle, Menu } from 'lucide-react';
 import { HealthStatus } from '../../types/domain';
 
 interface HeaderProps {
@@ -45,10 +45,10 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="truncate max-w-[120px]">{health?.activeTimezone || 'Africa/Bamako'}</span>
         </div>
 
-        {/* Database & Server Status (Adapté mobile & desktop) */}
+        {/* Statut du service (Adapté mobile & desktop) */}
         <div
-          title={isConnected ? `Serveur Connecté (${health?.tablesCount || 0} tables)` : 'Serveur Injoignable'}
-          className={`flex items-center space-x-1.5 px-2 sm:px-2.5 py-1.5 rounded border transition-colors ${
+          title={isConnected ? 'PostBoy est opérationnel' : 'Service momentanément indisponible'}
+          className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-full border transition-colors ${
             isConnected
               ? 'bg-ows-accent/10 border-ows-accent/30 text-ows-accent'
               : 'bg-red-500/10 border-red-500/30 text-red-400'
@@ -56,16 +56,13 @@ export const Header: React.FC<HeaderProps> = ({
         >
           {isConnected ? (
             <>
-              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden sm:inline font-medium">Connecté</span>
-              <span className="hidden md:inline text-[10px] text-ows-textSubtle font-mono">
-                ({health?.tablesCount || 0} tables)
-              </span>
+              <span className="w-2 h-2 rounded-full bg-ows-accent animate-pulse shrink-0" />
+              <span className="font-medium text-xs">En ligne</span>
             </>
           ) : (
             <>
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden sm:inline font-medium">Injoignable</span>
+              <span className="font-medium text-xs">Hors ligne</span>
             </>
           )}
         </div>

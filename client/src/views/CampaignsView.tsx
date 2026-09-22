@@ -11,25 +11,14 @@ import {
   X,
   Hash,
   AtSign,
-  Palette,
   AlertTriangle
 } from 'lucide-react';
 import { Campaign } from '../types/domain';
+import { CampaignWizard } from '../components/campaigns/CampaignWizard';
 
 interface CampaignsViewProps {
   activeTimezone: string;
 }
-
-const PRESET_COLORS = [
-  '#08EB08', // Oshun Signature Green
-  '#06b6d4', // Cyan
-  '#3b82f6', // Blue
-  '#8b5cf6', // Violet
-  '#ec4899', // Pink
-  '#f97316', // Orange
-  '#eab308', // Yellow
-  '#14b8a6'  // Teal
-];
 
 export const CampaignsView: React.FC<CampaignsViewProps> = ({ activeTimezone }) => {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -45,17 +34,6 @@ export const CampaignsView: React.FC<CampaignsViewProps> = ({ activeTimezone }) 
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const [viewingCampaign, setViewingCampaign] = useState<Campaign | null>(null);
   const [deletingCampaign, setDeletingCampaign] = useState<Campaign | null>(null);
-
-  // Données de formulaire
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    color: '#08EB08',
-    mentions: '',
-    hashtags: '',
-    status: 'active' as 'active' | 'inactive'
-  });
-  const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
 
   // Récupération de la liste des campagnes
@@ -106,69 +84,12 @@ export const CampaignsView: React.FC<CampaignsViewProps> = ({ activeTimezone }) 
 
   // Ouverture du formulaire de création
   const openCreateModal = () => {
-    setFormData({
-      name: '',
-      description: '',
-      color: '#08EB08',
-      mentions: '',
-      hashtags: '',
-      status: 'active'
-    });
-    setFormError(null);
     setIsCreateModalOpen(true);
   };
 
   // Ouverture du formulaire de modification
   const openEditModal = (c: Campaign) => {
-    setFormData({
-      name: c.name,
-      description: c.description || '',
-      color: c.color || '#08EB08',
-      mentions: c.mentions || '',
-      hashtags: c.hashtags || '',
-      status: c.status || 'active'
-    });
-    setFormError(null);
     setEditingCampaign(c);
-  };
-
-  // Soumission (Création ou Modification)
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
-
-    const trimmedName = formData.name.trim();
-    if (!trimmedName) {
-      setFormError('Le nom de la campagne est obligatoire.');
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-      const isEdit = !!editingCampaign;
-      const url = isEdit ? `/api/campaigns/${editingCampaign.id}` : '/api/campaigns';
-      const method = isEdit ? 'PUT' : 'POST';
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-
-      const json = await res.json();
-      if (!res.ok || json.status === 'error') {
-        throw new Error(json.message || 'Une erreur est survenue lors de lenregistrement.');
-      }
-
-      setIsCreateModalOpen(false);
-      setEditingCampaign(null);
-      await fetchCampaigns();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erreur de communication';
-      setFormError(msg);
-    } finally {
-      setSubmitting(false);
-    }
   };
 
   // Bascule rapide Actif / Inactif
@@ -487,170 +408,18 @@ export const CampaignsView: React.FC<CampaignsViewProps> = ({ activeTimezone }) 
         </div>
       )}
 
-      {/* 4. Modal Création / Édition */}
-      {(isCreateModalOpen || editingCampaign) && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-ows-surface1 border border-ows-border rounded-xl max-w-lg w-full p-6 space-y-5 shadow-2xl relative">
-            <div className="flex items-center justify-between pb-3 border-b border-ows-border">
-              <h3 className="text-base font-bold font-heading text-ows-textMain">
-                {editingCampaign ? 'Modifier la campagne' : 'Nouvelle campagne'}
-              </h3>
-              <button
-                onClick={() => {
-                  setIsCreateModalOpen(false);
-                  setEditingCampaign(null);
-                }}
-                className="text-ows-textSubtle hover:text-ows-textMain transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {formError && (
-              <div className="p-3 rounded-lg bg-red-500/15 border border-red-500/30 text-red-400 text-xs flex items-center space-x-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{formError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Nom */}
-              <div>
-                <label className="block text-xs font-semibold text-ows-textMain mb-1.5">
-                  Nom de la campagne <span className="text-ows-accent">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Ex: BOXABL, Prime Video, Call of Duty..."
-                  className="w-full px-3 py-2 bg-ows-surface2 border border-ows-border rounded-lg text-xs text-ows-textMain focus:outline-none focus:border-ows-accent"
-                />
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="block text-xs font-semibold text-ows-textMuted mb-1.5">
-                  Description / Notes
-                </label>
-                <textarea
-                  rows={2}
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Objectif de la campagne, consignes de clipping, etc."
-                  className="w-full px-3 py-2 bg-ows-surface2 border border-ows-border rounded-lg text-xs text-ows-textMain focus:outline-none focus:border-ows-accent"
-                />
-              </div>
-
-              {/* Couleur */}
-              <div>
-                <label className="block text-xs font-semibold text-ows-textMuted mb-1.5 flex items-center space-x-1.5">
-                  <Palette className="w-3.5 h-3.5 text-ows-accent" />
-                  <span>Couleur distinctive</span>
-                </label>
-                <div className="flex items-center space-x-2">
-                  {PRESET_COLORS.map((col) => (
-                    <button
-                      key={col}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, color: col })}
-                      className={`w-6 h-6 rounded-full transition-transform ${
-                        formData.color === col ? 'scale-125 ring-2 ring-white ring-offset-2 ring-offset-black' : ''
-                      }`}
-                      style={{ backgroundColor: col }}
-                    />
-                  ))}
-                  <input
-                    type="color"
-                    value={formData.color}
-                    onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                    className="w-7 h-7 bg-transparent border-0 cursor-pointer rounded ml-2"
-                    title="Couleur personnalisée"
-                  />
-                </div>
-              </div>
-
-              {/* Mentions & Hashtags */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-ows-textMuted mb-1.5 flex items-center space-x-1">
-                    <AtSign className="w-3 h-3 text-ows-accent" />
-                    <span>Mentions sociales</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.mentions}
-                    onChange={(e) => setFormData({ ...formData, mentions: e.target.value })}
-                    placeholder="@compte1 @compte2"
-                    className="w-full px-3 py-2 bg-ows-surface2 border border-ows-border rounded-lg text-xs text-ows-textMain font-mono focus:outline-none focus:border-ows-accent"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-ows-textMuted mb-1.5 flex items-center space-x-1">
-                    <Hash className="w-3 h-3 text-ows-accent" />
-                    <span>Hashtags</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.hashtags}
-                    onChange={(e) => setFormData({ ...formData, hashtags: e.target.value })}
-                    placeholder="#tag1 #tag2 #tag3"
-                    className="w-full px-3 py-2 bg-ows-surface2 border border-ows-border rounded-lg text-xs text-ows-textMain font-mono focus:outline-none focus:border-ows-accent"
-                  />
-                </div>
-              </div>
-
-              {/* Statut */}
-              <div className="flex items-center justify-between p-3 rounded-lg bg-ows-surface2 border border-ows-border">
-                <div>
-                  <div className="text-xs font-medium text-ows-textMain">Statut de la campagne</div>
-                  <div className="text-[11px] text-ows-textSubtle">
-                    {formData.status === 'active' ? 'Campagne active' : 'Campagne désactivée (archivée)'}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setFormData({
-                      ...formData,
-                      status: formData.status === 'active' ? 'inactive' : 'active'
-                    })
-                  }
-                  className={`px-3 py-1 rounded text-xs font-mono font-medium border ${
-                    formData.status === 'active'
-                      ? 'bg-ows-accent/15 text-ows-accent border-ows-accent/30'
-                      : 'bg-ows-surface1 text-ows-textSubtle border-ows-border'
-                  }`}
-                >
-                  {formData.status === 'active' ? 'Active' : 'Inactive'}
-                </button>
-              </div>
-
-              {/* Actions du formulaire */}
-              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-ows-border">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsCreateModalOpen(false);
-                    setEditingCampaign(null);
-                  }}
-                  className="px-4 py-2 rounded-lg text-xs text-ows-textMuted hover:text-ows-textMain transition-colors"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-5 py-2 rounded-lg bg-ows-accent text-black font-semibold text-xs hover:bg-ows-accentHover transition-colors disabled:opacity-50"
-                >
-                  {submitting ? 'Enregistrement...' : editingCampaign ? 'Enregistrer les modifications' : 'Créer la campagne'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* 4. Wizard Moderne Création / Édition de Campagne */}
+      <CampaignWizard
+        isOpen={isCreateModalOpen || Boolean(editingCampaign)}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          setEditingCampaign(null);
+        }}
+        onSuccess={() => {
+          fetchCampaigns();
+        }}
+        initialCampaign={editingCampaign}
+      />
 
       {/* 5. Modal Consultation Détails */}
       {viewingCampaign && (

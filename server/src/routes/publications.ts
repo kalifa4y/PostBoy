@@ -248,25 +248,50 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         scheduled_at
       } = request.body || {};
 
-      // 1. Validation de la vidéo
-      if (!video_id || typeof video_id !== 'string' || video_id.trim() === '') {
-        return reply.code(400).send({
-          status: 'error',
-          message: 'L\'identifiant de la vidéo (video_id) est obligatoire.'
-        });
-      }
+      // 1. Validation ou résolution de la vidéo
+      let videoRecord: { id: string; campaign_id: string | null; original_name: string } | undefined;
 
-      const video = await db.get<{
-        id: string;
-        campaign_id: string | null;
-        original_name: string;
-      }>('SELECT id, campaign_id, original_name FROM videos WHERE id = ?', [video_id.trim()]);
+      if (video_id !== undefined) {
+        if (typeof video_id !== 'string' || video_id.trim() === '') {
+          return reply.code(400).send({
+            status: 'error',
+            message: 'L\'identifiant de la vidéo (video_id) est obligatoire.'
+          });
+        }
 
-      if (!video) {
-        return reply.code(404).send({
-          status: 'error',
-          message: `Vidéo introuvable avec l'identifiant ${video_id}`
-        });
+        videoRecord = await db.get<{
+          id: string;
+          campaign_id: string | null;
+          original_name: string;
+        }>('SELECT id, campaign_id, original_name FROM videos WHERE id = ?', [video_id.trim()]);
+
+        if (!videoRecord) {
+          return reply.code(404).send({
+            status: 'error',
+            message: `Vidéo introuvable avec l'identifiant ${video_id}`
+          });
+        }
+      } else {
+        // Fallback transparent : on assure l'existence d'une référence générique sans campagne
+        const defaultVidId = 'default_local_clip';
+        videoRecord = await db.get<{
+          id: string;
+          campaign_id: string | null;
+          original_name: string;
+        }>('SELECT id, campaign_id, original_name FROM videos WHERE id = ?', [defaultVidId]);
+
+        if (!videoRecord) {
+          await db.run(`
+            INSERT OR IGNORE INTO videos (id, filename, original_name, file_path, file_size, duration, mime_type, campaign_id, status, created_at, updated_at)
+            VALUES (?, 'clip_local.mp4', 'Clip Local', 'clip_local.mp4', 0, 0, 'video/mp4', NULL, 'ready', datetime('now'), datetime('now'))
+          `, [defaultVidId]);
+
+          videoRecord = {
+            id: defaultVidId,
+            campaign_id: null,
+            original_name: 'Clip Local'
+          };
+        }
       }
 
       // 2. Validation de la plateforme
@@ -296,9 +321,10 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
 
       // 4. Campagne : hérite de la vidéo si non spécifié, ou vérifie existence si fourni
       let assignedCampaignId: string | null = null;
+      let assignedCampaignName: string | null = null;
       if (campaign_id !== undefined) {
         if (campaign_id && typeof campaign_id === 'string' && campaign_id.trim() !== '' && campaign_id !== 'unassigned') {
-          const campaignExists = await db.get<{ id: string }>('SELECT id FROM campaigns WHERE id = ?', [campaign_id.trim()]);
+          const campaignExists = await db.get<{ id: string; name: string }>('SELECT id, name FROM campaigns WHERE id = ?', [campaign_id.trim()]);
           if (!campaignExists) {
             return reply.code(400).send({
               status: 'error',
@@ -306,18 +332,26 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
             });
           }
           assignedCampaignId = campaign_id.trim();
+          assignedCampaignName = campaignExists.name;
         } else {
           assignedCampaignId = null;
         }
       } else {
-        assignedCampaignId = video.campaign_id;
+        assignedCampaignId = videoRecord.campaign_id;
       }
 
       // 5. Titre, caption, hashtags et notes
       const finalCaption = caption ? caption.trim() : '';
-      const finalTitle = title && title.trim() !== ''
-        ? title.trim()
-        : (finalCaption ? finalCaption.split('\n')[0].slice(0, 100) : video.original_name);
+      let finalTitle = title && title.trim() !== '' ? title.trim() : '';
+      if (!finalTitle) {
+        if (finalCaption) {
+          finalTitle = finalCaption.split('\n')[0].slice(0, 100);
+        } else if (assignedCampaignName) {
+          finalTitle = `${assignedCampaignName} — ${normalizedPlatform.toUpperCase()}`;
+        } else {
+          finalTitle = `Publication ${normalizedPlatform.toUpperCase()}`;
+        }
+      }
 
       const rawHashtags = hashtags !== undefined ? hashtags : tags;
       const finalHashtags = rawHashtags && typeof rawHashtags === 'string' ? rawHashtags.trim() : null;
@@ -350,7 +384,7 @@ export async function publicationRoutes(fastify: FastifyInstance): Promise<void>
         )
       `, [
         id,
-        video.id,
+        videoRecord.id,
         assignedCampaignId,
         normalizedPlatform,
         finalTitle,
