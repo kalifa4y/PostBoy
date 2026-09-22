@@ -232,7 +232,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onSettingsUpdated })
           </div>
 
           <p className="text-xs text-ows-textMuted">
-            Recevez automatiquement une notification par email lors des publications réussies (avec le lien direct du post) ou en cas d'échec.
+            Recevez des rappels par email pour vos publications planifiées et les bilans de vos objectifs de clipping.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">

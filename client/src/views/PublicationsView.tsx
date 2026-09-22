@@ -114,6 +114,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
   const [editStatus, setEditStatus] = useState<PublicationStatus>('draft');
   const [editScheduledAt, setEditScheduledAt] = useState<string>('');
   const [editPostUrl, setEditPostUrl] = useState<string>('');
+  const [editCampaignId, setEditCampaignId] = useState<string>('');
 
   // Formulaire de Duplication
   const [duplicateTargetPlatform, setDuplicateTargetPlatform] = useState<SocialPlatform>('instagram');
@@ -475,6 +476,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
     setEditStatus(pub.status);
     setEditScheduledAt(pub.scheduled_at ? pub.scheduled_at.slice(0, 16) : '');
     setEditPostUrl(pub.post_url || pub.external_url || '');
+    setEditCampaignId(pub.campaign_id || '');
     setFormError(null);
   };
 
@@ -497,7 +499,8 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
           notes: editNotes.trim() || null,
           status: editStatus,
           scheduled_at: editScheduledAt || null,
-          post_url: editPostUrl.trim() || null
+          post_url: editPostUrl.trim() || null,
+          campaign_id: editCampaignId ? editCampaignId : null
         })
       });
 
@@ -652,9 +655,9 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
     }
   };
 
-  // Récupération de la campagne liée à la vidéo sélectionnée dans le formulaire
+  // Récupération de la campagne liée à la vidéo sélectionnée ou à la campagne choisie dans le formulaire
   const selectedFormVideo = videos.find(v => v.id === formVideoId);
-  const videoCampaign = campaigns.find(c => c.id === selectedFormVideo?.campaign_id);
+  const videoCampaign = campaigns.find(c => c.id === (formCampaignId !== 'auto' && formCampaignId ? formCampaignId : selectedFormVideo?.campaign_id));
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -692,7 +695,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
       {/* 2. KPIs de Synthèse du Workflow Manuel */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <div className="p-4 rounded-xl bg-ows-surface-card border border-ows-border">
-          <p className="text-xs text-ows-text-muted uppercase tracking-wider font-semibold">Total clips</p>
+          <p className="text-xs text-ows-text-muted uppercase tracking-wider font-semibold">Total publications</p>
           <p className="text-2xl font-bold font-heading text-ows-text-main mt-1">{stats.total}</p>
         </div>
         <div className="p-4 rounded-xl bg-ows-surface-card border border-ows-border">
@@ -1107,7 +1110,31 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                 )}
               </div>
 
-              {/* 2. Plateformes Cibles */}
+              {/* 2. Campagne Associée */}
+              <div>
+                <label className="block text-xs font-medium text-ows-text-muted mb-1.5 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-ows-accent" />
+                  Campagne associée
+                </label>
+                <select
+                  value={formCampaignId}
+                  onChange={(e) => setFormCampaignId(e.target.value)}
+                  className="w-full bg-black border border-ows-border rounded-lg px-3.5 py-2.5 text-sm text-ows-text-main focus:outline-none focus:border-ows-accent"
+                >
+                  <option value="auto">Automatique (héritée de la vidéo ou par défaut)</option>
+                  <option value="">-- Aucune campagne --</option>
+                  {campaigns.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {c.status === 'inactive' ? '(inactive)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-ows-textSubtle mt-1">
+                  Permet de comptabiliser la tâche dans le suivi des 5 campagnes distinctes de la journée.
+                </p>
+              </div>
+
+              {/* 3. Plateformes Cibles */}
               {createMode === 'multi' ? (
                 <div>
                   <label className="block text-xs font-medium text-ows-text-muted mb-2">
@@ -1347,6 +1374,26 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                     <option value="cancelled">Annulée</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Campagne Associée */}
+              <div>
+                <label className="block text-xs font-medium text-ows-text-muted mb-1.5 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-ows-accent" />
+                  Campagne associée
+                </label>
+                <select
+                  value={editCampaignId}
+                  onChange={(e) => setEditCampaignId(e.target.value)}
+                  className="w-full bg-black border border-ows-border rounded-lg px-3 py-2 text-sm text-ows-text-main focus:outline-none focus:border-ows-accent"
+                >
+                  <option value="">-- Aucune campagne --</option>
+                  {campaigns.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {c.status === 'inactive' ? '(inactive)' : ''}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Caption */}

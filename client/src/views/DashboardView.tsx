@@ -75,7 +75,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, active
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Filtres temporels de l'historique (Phase 5)
+  // Filtres temporels de l'historique
   const [historyPeriod, setHistoryPeriod] = useState<'day' | 'week' | 'month' | 'year'>('week');
   const [historyData, setHistoryData] = useState<ClippingHistoryResponse | null>(null);
   const [historyLoading, setHistoryLoading] = useState<boolean>(false);
@@ -211,7 +211,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, active
         </div>
       )}
 
-      {/* 2. OBJECTIF QUOTIDIEN DE DISCIPLINE DE CLIPPING (PHASE 5) */}
+      {/* 2. OBJECTIF QUOTIDIEN DE DISCIPLINE DE CLIPPING */}
       <div className="bg-ows-surface1 border border-ows-border rounded-xl p-6 relative overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-ows-borderSubtle">
           <div className="flex items-center space-x-3">
@@ -345,7 +345,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, active
         </div>
       </div>
 
-      {/* 3. SUIVI HISTORIQUE ET STATISTIQUES (PHASE 5) */}
+      {/* 3. SUIVI HISTORIQUE ET STATISTIQUES */}
       <div className="bg-ows-surface1 border border-ows-border rounded-xl p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-ows-borderSubtle">
           <div className="flex items-center space-x-2">

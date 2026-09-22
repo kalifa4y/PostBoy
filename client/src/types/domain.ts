@@ -54,8 +54,6 @@ export interface Publication {
   post_url?: string | null;
   external_url?: string | null;
   error_message?: string | null;
-  retry_count: number;
-  max_retries: number;
   created_at: string;
   updated_at: string;
   campaign_name?: string | null;

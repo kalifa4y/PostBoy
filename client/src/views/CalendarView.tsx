@@ -189,7 +189,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ activeTimezone, onNa
     });
   }, [publications, selectedPlatform, selectedStatus, selectedCampaign]);
 
-  // Statistiques d'atteinte de l'objectif de clipping par jour (Phase 5 : 5 posts / 5 campagnes)
+  // Statistiques d'atteinte de l'objectif de clipping par jour (5 posts / 5 campagnes)
   const dayClippingStats = useMemo(() => {
     const statsMap: Record<string, { publishedCount: number; campaignsCount: number; isGoalMet: boolean }> = {};
     const campaignsMap: Record<string, Set<string>> = {};
