@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Film,
   CalendarClock,
   CheckCircle2,
   AlertCircle,
-  Upload,
   PlusCircle,
   Send,
   Calendar,
@@ -476,12 +474,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, active
 
       {/* 4. Cartes de Métriques Clés (4 KPIs généraux) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI 1 : Vidéos à publier */}
+        {/* KPI 1 : À publier */}
         <div className="bg-ows-surface1 border border-ows-border rounded-xl p-5 relative overflow-hidden flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-ows-textMuted">Vidéos à publier</span>
+            <span className="text-xs font-medium text-ows-textMuted">À publier</span>
             <div className="w-8 h-8 rounded-lg bg-ows-surface2 border border-ows-border flex items-center justify-center text-ows-textSubtle">
-              <Film className="w-4 h-4" />
+              <Send className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-4">
@@ -489,9 +487,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, active
               {stats.videosToPublish}
             </div>
             <div className="text-[11px] text-ows-textSubtle mt-1 flex items-center space-x-1">
-              <span>sur</span>
-              <span className="font-mono text-ows-textMuted">{stats.totalVideos}</span>
-              <span>vidéos importées</span>
+              <span>sources en attente de publication</span>
             </div>
           </div>
         </div>
@@ -564,17 +560,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, active
         <div className="text-[11px] font-medium text-ows-textSubtle uppercase tracking-wider mb-3">
           Actions rapides
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <button
-            onClick={() => onNavigate('videos')}
+            onClick={() => onNavigate('publications')}
             className="flex items-center space-x-3 p-3 rounded-lg bg-ows-surface2 border border-ows-border hover:border-ows-accent/50 text-left transition-all group"
           >
             <div className="w-8 h-8 rounded bg-ows-surfaceCard flex items-center justify-center text-ows-textMuted group-hover:text-ows-accent transition-colors">
-              <Upload className="w-4 h-4" />
+              <Send className="w-4 h-4" />
             </div>
             <div>
-              <div className="text-xs font-semibold text-ows-textMain">Importer des vidéos</div>
-              <div className="text-[10px] text-ows-textSubtle">Phase 3</div>
+              <div className="text-xs font-semibold text-ows-textMain">Gérer les publications</div>
+              <div className="text-[10px] text-ows-textSubtle">Créer & programmer</div>
             </div>
           </button>
 
@@ -586,21 +582,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, active
               <PlusCircle className="w-4 h-4" />
             </div>
             <div>
-              <div className="text-xs font-semibold text-ows-textMain">Ajouter une campagne</div>
-              <div className="text-[10px] text-ows-textSubtle">Phase 2</div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => onNavigate('publications')}
-            className="flex items-center space-x-3 p-3 rounded-lg bg-ows-surface2 border border-ows-border hover:border-ows-accent/50 text-left transition-all group"
-          >
-            <div className="w-8 h-8 rounded bg-ows-surfaceCard flex items-center justify-center text-ows-textMuted group-hover:text-ows-accent transition-colors">
-              <Send className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="text-xs font-semibold text-ows-textMain">Programmer</div>
-              <div className="text-[10px] text-ows-textSubtle">Phase 4</div>
+              <div className="text-xs font-semibold text-ows-textMain">Gérer les campagnes</div>
+              <div className="text-[10px] text-ows-textSubtle">Organiser vos projets</div>
             </div>
           </button>
 
@@ -613,7 +596,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, active
             </div>
             <div>
               <div className="text-xs font-semibold text-ows-textMain">Voir le calendrier</div>
-              <div className="text-[10px] text-ows-textSubtle">Phase 5</div>
+              <div className="text-[10px] text-ows-textSubtle">Planning & diffusion</div>
             </div>
           </button>
         </div>

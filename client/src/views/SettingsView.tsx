@@ -27,7 +27,6 @@ interface SmtpStatus {
 export const SettingsView: React.FC<SettingsViewProps> = ({ onSettingsUpdated }) => {
   const [settings, setSettings] = useState<AppSettings>({
     timezone: 'Africa/Bamako',
-    auto_publish_enabled: '1',
     email_notifications_enabled: '0',
     smtp_host: '',
     smtp_port: '587',

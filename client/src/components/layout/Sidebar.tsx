@@ -2,7 +2,6 @@ import React, { useEffect } from 'react';
 import {
   LayoutDashboard,
   Layers,
-  Film,
   Send,
   Calendar,
   Settings,
@@ -10,7 +9,7 @@ import {
   X
 } from 'lucide-react';
 
-export type NavTab = 'dashboard' | 'campaigns' | 'videos' | 'publications' | 'calendar' | 'settings';
+export type NavTab = 'dashboard' | 'campaigns' | 'publications' | 'calendar' | 'settings';
 
 interface SidebarProps {
   activeTab: NavTab;
@@ -36,12 +35,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'campaigns' as NavTab,
       label: 'Campagnes',
       icon: Layers,
-      badge: 'Actif'
-    },
-    {
-      id: 'videos' as NavTab,
-      label: 'Vidéothèque',
-      icon: Film,
       badge: 'Actif'
     },
     {

@@ -1,8 +1,6 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
-import multipart from '@fastify/multipart';
 import path from 'node:path';
-import fs from 'node:fs';
 import dotenv from 'dotenv';
 import { initializeDatabase } from './db/init.js';
 import { healthRoutes } from './routes/health.js';
@@ -50,35 +48,6 @@ export async function buildApp(): Promise<FastifyInstance> {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true
   });
-
-  // Support de l'upload multipart en streaming
-  await server.register(multipart, {
-    limits: {
-      fileSize: 1024 * 1024 * 1024, // 1 Go maximum
-      files: 100
-    }
-  });
-
-  // Exposition statique des vidéos locales UNIQUEMENT en développement local (hors Vercel)
-  const isVercel = Boolean(process.env.VERCEL);
-  const uploadsDir = path.resolve(projectRoot, process.env.UPLOADS_DIR || './uploads');
-
-  if (!isVercel) {
-    try {
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-      }
-      if (fs.existsSync(uploadsDir)) {
-        const fastifyStatic = (await import('@fastify/static')).default;
-        await server.register(fastifyStatic, {
-          root: uploadsDir,
-          prefix: '/uploads/'
-        });
-      }
-    } catch {
-      // Ignoré en cas d'indisponibilité du module statique
-    }
-  }
 
   // Enregistrement de toutes les routes API
   await server.register(healthRoutes);

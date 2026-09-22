@@ -3,7 +3,6 @@ import { getDatabase } from '../db/connection.js';
 
 interface UpdateSettingsBody {
   timezone?: string;
-  auto_publish_enabled?: string;
   email_notifications_enabled?: string;
   smtp_host?: string;
   smtp_port?: string;

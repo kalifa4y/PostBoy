@@ -3,7 +3,6 @@ import { Sidebar, NavTab } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { DashboardView } from './views/DashboardView';
 import { CampaignsView } from './views/CampaignsView';
-import { VideosView } from './views/VideosView';
 import { PublicationsView } from './views/PublicationsView';
 import { CalendarView } from './views/CalendarView';
 import { SettingsView } from './views/SettingsView';
@@ -21,7 +20,7 @@ export const App: React.FC = () => {
     const tabParam = params.get('tab') as NavTab | null;
     if (
       tabParam &&
-      ['dashboard', 'campaigns', 'videos', 'publications', 'calendar', 'settings'].includes(tabParam)
+      ['dashboard', 'campaigns', 'publications', 'calendar', 'settings'].includes(tabParam)
     ) {
       setActiveTab(tabParam);
     }
@@ -59,8 +58,6 @@ export const App: React.FC = () => {
         return 'Dashboard & Statistiques';
       case 'campaigns':
         return 'Gestion des Campagnes';
-      case 'videos':
-        return 'Bibliothèque de Vidéos';
       case 'publications':
         return 'Gestion des Publications';
       case 'calendar':
@@ -108,10 +105,6 @@ export const App: React.FC = () => {
 
           {activeTab === 'campaigns' && (
             <CampaignsView activeTimezone={health?.activeTimezone || 'Africa/Bamako'} />
-          )}
-
-          {activeTab === 'videos' && (
-            <VideosView activeTimezone={health?.activeTimezone || 'Africa/Bamako'} />
           )}
 
           {activeTab === 'publications' && (

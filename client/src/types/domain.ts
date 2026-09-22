@@ -32,39 +32,12 @@ export interface Video {
 
 export type SocialPlatform = 'tiktok' | 'instagram' | 'youtube' | 'facebook' | 'twitter' | 'linkedin';
 
-export type SocialAccountStatus = 'connected' | 'expired' | 'disconnected' | 'error';
-
-export interface SocialAccount {
-  id: string;
-  platform: SocialPlatform;
-  account_id: string;
-  username: string;
-  display_name?: string | null;
-  account_name?: string; // Compatibilité rétroactive
-  status: SocialAccountStatus;
-  token_expires_at?: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface PlatformConfigStatus {
-  name: string;
-  configured: boolean;
-}
-
-export interface SocialAccountsApiResponse {
-  success: boolean;
-  accounts: SocialAccount[];
-  platforms: Record<'tiktok' | 'instagram' | 'youtube', PlatformConfigStatus>;
-}
-
 export type PublicationStatus = 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed' | 'cancelled';
 
 export interface Publication {
   id: string;
   video_id: string;
   campaign_id?: string | null;
-  social_account_id?: string | null;
   platform: SocialPlatform;
   title: string;
   caption?: string | null;
@@ -93,17 +66,6 @@ export interface Publication {
   video_file_size?: number | null;
   video_duration?: number | null;
   video_thumbnail_path?: string | null;
-  social_account_username?: string | null;
-  social_account_display_name?: string | null;
-}
-
-export interface PublicationLog {
-  id: string;
-  publication_id: string;
-  event: 'status_change' | 'publish_attempt' | 'publish_success' | 'publish_failed' | 'retry';
-  message: string;
-  details?: string | null;
-  created_at: string;
 }
 
 export interface NotificationRecord {
@@ -121,7 +83,6 @@ export interface NotificationRecord {
 
 export interface AppSettings {
   timezone: string;
-  auto_publish_enabled: string;
   email_notifications_enabled: string;
   smtp_host?: string;
   smtp_port?: string;

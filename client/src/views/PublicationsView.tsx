@@ -93,6 +93,8 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
   // Formulaire de Création
   const [createMode, setCreateMode] = useState<'single' | 'multi'>('single');
   const [formVideoId, setFormVideoId] = useState<string>('');
+  const [customVideoName, setCustomVideoName] = useState<string>('');
+  const [useCustomVideo, setUseCustomVideo] = useState<boolean>(false);
   const [formPlatform, setFormPlatform] = useState<SocialPlatform>('tiktok');
   const [formMultiPlatforms, setFormMultiPlatforms] = useState<SocialPlatform[]>(['tiktok', 'instagram', 'youtube']);
   const [formCaption, setFormCaption] = useState<string>('');
@@ -337,6 +339,8 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
   const handleOpenCreateModal = (mode: 'single' | 'multi' = 'single') => {
     setCreateMode(mode);
     setFormVideoId(videos.length > 0 ? videos[0].id : '');
+    setCustomVideoName('');
+    setUseCustomVideo(videos.length === 0);
     setFormPlatform('tiktok');
     setFormMultiPlatforms(['tiktok', 'instagram', 'youtube']);
     setFormCaption('');
@@ -357,9 +361,42 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
   // Soumission Création (Unitaire ou Multi-Plateformes)
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formVideoId) {
-      setFormError('Veuillez sélectionner une vidéo source.');
-      return;
+
+    let targetVideoId = formVideoId;
+
+    if (useCustomVideo || videos.length === 0) {
+      if (!customVideoName.trim()) {
+        setFormError('Veuillez renseigner le nom ou le fichier de la vidéo source.');
+        return;
+      }
+      try {
+        setSubmitting(true);
+        setFormError(null);
+        const vRes = await fetch('/api/videos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            original_name: customVideoName.trim(),
+            campaign_id: formCampaignId === 'auto' ? undefined : (formCampaignId || null)
+          })
+        });
+        const vData = await vRes.json();
+        if (!vRes.ok || vData.status !== 'success' || !vData.video) {
+          throw new Error(vData.message || 'Impossible d\'enregistrer la référence vidéo source');
+        }
+        targetVideoId = vData.video.id;
+        await fetchAuxiliaryData();
+      } catch (err: unknown) {
+        setSubmitting(false);
+        const msg = err instanceof Error ? err.message : 'Erreur enregistrement vidéo';
+        setFormError(msg);
+        return;
+      }
+    } else {
+      if (!formVideoId) {
+        setFormError('Veuillez sélectionner une vidéo source.');
+        return;
+      }
     }
 
     try {
@@ -376,7 +413,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            video_id: formVideoId,
+            video_id: targetVideoId,
             platforms: formMultiPlatforms,
             caption: formCaption.trim() || undefined,
             hashtags: formHashtags.trim() || undefined,
@@ -396,7 +433,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            video_id: formVideoId,
+            video_id: targetVideoId,
             platform: formPlatform,
             caption: formCaption.trim() || undefined,
             hashtags: formHashtags.trim() || undefined,
@@ -419,6 +456,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
         message: 'Publication(s) créée(s) avec succès pour le workflow manuel !'
       });
       await fetchPublications();
+      await fetchAuxiliaryData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erreur réseau';
       setFormError(msg);
@@ -1022,14 +1060,35 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                 </div>
               )}
 
-              {/* 1. Sélection Vidéo Source */}
+              {/* 1. Sélection Vidéo Source Locale */}
               <div>
-                <label className="block text-xs font-medium text-ows-text-muted mb-1.5">
-                  Vidéo Source Locale <span className="text-ows-accent">*</span>
-                </label>
-                {videos.length === 0 ? (
-                  <div className="p-3 bg-black border border-rose-500/30 rounded-lg text-xs text-rose-400">
-                    Aucune vidéo disponible. Importez d&apos;abord une vidéo dans l&apos;onglet Vidéothèque.
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-medium text-ows-text-muted">
+                    Vidéo Source Locale <span className="text-ows-accent">*</span>
+                  </label>
+                  {videos.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setUseCustomVideo(prev => !prev)}
+                      className="text-[11px] text-ows-accent hover:underline font-medium"
+                    >
+                      {useCustomVideo ? 'Choisir une vidéo existante' : '+ Nouveau fichier'}
+                    </button>
+                  )}
+                </div>
+                {useCustomVideo || videos.length === 0 ? (
+                  <div>
+                    <input
+                      type="text"
+                      value={customVideoName}
+                      onChange={(e) => setCustomVideoName(e.target.value)}
+                      placeholder="Ex: mon_clip_01.mp4 ou Boxabl_Part1.mov"
+                      className="w-full bg-black border border-ows-border rounded-lg px-3.5 py-2.5 text-sm text-ows-text-main focus:outline-none focus:border-ows-accent"
+                      required
+                    />
+                    <p className="text-[11px] text-ows-textSubtle mt-1">
+                      Indiquez le nom ou le chemin du fichier vidéo situé sur votre PC.
+                    </p>
                   </div>
                 ) : (
                   <select
@@ -1038,9 +1097,10 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                     className="w-full bg-black border border-ows-border rounded-lg px-3.5 py-2.5 text-sm text-ows-text-main focus:outline-none focus:border-ows-accent"
                     required
                   >
+                    <option value="">-- Sélectionnez une vidéo source existante --</option>
                     {videos.map(v => (
                       <option key={v.id} value={v.id}>
-                        {v.original_name} ({(v.file_size / (1024 * 1024)).toFixed(1)} Mo)
+                        {v.original_name} {v.file_size ? `(${(v.file_size / (1024 * 1024)).toFixed(1)} Mo)` : ''}
                       </option>
                     ))}
                   </select>
@@ -1203,7 +1263,7 @@ export const PublicationsView: React.FC<PublicationsViewProps> = ({ activeTimezo
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting || videos.length === 0}
+                  disabled={submitting}
                   className="px-5 py-2 rounded-lg bg-ows-accent hover:bg-ows-accent-hover text-black font-semibold text-sm transition-colors disabled:opacity-50"
                 >
                   {submitting
