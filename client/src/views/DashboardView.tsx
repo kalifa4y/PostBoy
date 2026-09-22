@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   AlertCircle,
   PlusCircle,
+  Plus,
   Send,
   Calendar,
   ExternalLink,
@@ -20,6 +21,7 @@ import {
   DailyClippingGoal
 } from '../types/domain';
 import { NavTab } from '../components/layout/Sidebar';
+import { QuickPublishWizard } from '../components/publications/QuickPublishWizard';
 
 interface DashboardViewProps {
   onNavigate: (tab: NavTab) => void;
@@ -74,6 +76,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, active
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isWizardOpen, setIsWizardOpen] = useState<boolean>(false);
 
   // Filtres temporels de l'historique
   const [historyPeriod, setHistoryPeriod] = useState<'day' | 'week' | 'month' | 'year'>('week');
@@ -186,15 +189,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, active
           </p>
         </div>
 
-        {/* Bouton d'actualisation manuelle */}
-        <div className="flex items-center space-x-3">
+        {/* Actions d'en-tête */}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => setIsWizardOpen(true)}
+            className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-lg bg-ows-accent hover:bg-ows-accent-hover text-black font-semibold text-xs transition-all shadow-lg shadow-ows-accent/20"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Nouvelle publication</span>
+          </button>
+
           <button
             onClick={() => {
               fetchDashboardStats();
               fetchHistory(historyPeriod);
             }}
             disabled={loading || historyLoading}
-            className="inline-flex items-center space-x-2 px-3 py-2 rounded-lg bg-ows-surface1 border border-ows-border hover:border-ows-accent/50 text-xs font-medium text-ows-textMuted hover:text-ows-textMain transition-all disabled:opacity-50"
+            className="inline-flex items-center space-x-2 px-3.5 py-2.5 rounded-lg bg-ows-surface1 border border-ows-border hover:border-ows-accent/50 text-xs font-medium text-ows-textMuted hover:text-ows-textMain transition-all disabled:opacity-50"
             title="Rafraîchir les métriques"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${(loading || historyLoading) ? 'animate-spin text-ows-accent' : ''}`} />
@@ -560,7 +571,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, active
         <div className="text-[11px] font-medium text-ows-textSubtle uppercase tracking-wider mb-3">
           Actions rapides
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <button
+            onClick={() => setIsWizardOpen(true)}
+            className="flex items-center space-x-3 p-3 rounded-lg bg-ows-surface2 border border-ows-border hover:border-ows-accent text-left transition-all group shadow-sm hover:shadow-ows-accent/10"
+          >
+            <div className="w-8 h-8 rounded bg-ows-accent/15 border border-ows-accent/30 flex items-center justify-center text-ows-accent group-hover:bg-ows-accent group-hover:text-black transition-all">
+              <Plus className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-ows-textMain">Nouvelle publication</div>
+              <div className="text-[10px] text-ows-accent">Workflow guidé rapide</div>
+            </div>
+          </button>
+
           <button
             onClick={() => onNavigate('publications')}
             className="flex items-center space-x-3 p-3 rounded-lg bg-ows-surface2 border border-ows-border hover:border-ows-accent/50 text-left transition-all group"
@@ -778,6 +802,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, active
           </div>
         </div>
       </div>
+
+      {/* Workflow Guidé de Déclaration Rapide d'une Publication */}
+      <QuickPublishWizard
+        isOpen={isWizardOpen}
+        onClose={() => setIsWizardOpen(false)}
+        onSuccess={() => {
+          fetchDashboardStats();
+          fetchHistory(historyPeriod);
+        }}
+        activeTimezone={activeTimezone}
+      />
     </div>
   );
 };
